@@ -1,3 +1,5 @@
 config
+*.tar.gz
+*.tar.xz
 *.deb
 
