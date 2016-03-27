@@ -1,7 +1,7 @@
 /*
  *
  * Automatically generated file; DO NOT EDIT.
- * Linux/x86 4.4.4 Kernel Configuration
+ * Linux/x86 4.4.4-gnu Kernel Configuration
  *
  */
 #define CONFIG_IP6_NF_MATCH_AH_MODULE 1
