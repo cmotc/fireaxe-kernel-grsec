@@ -8,7 +8,9 @@ PROC=$(nproc)
 
 \rm -rf "$KERNELDEBFOLDER"
 
-cd fireaxe-kernel-grsec-4.4
+if [ -d "fireaxe-kernel-grsec-4.4/.git" ]; then
+	cd fireaxe-kernel-grsec-4.4
+fi
 
 if [ ! -d "$KERNELDEBLOBFOLDER" ]; then
 	echo "Copying Vanilla Linux Kernel for Deblobbing"
@@ -19,8 +21,12 @@ if [ ! -d "$KERNELDEBLOBFOLDER" ]; then
 fi
 
 echo "Building Libre Kernel"
-dash -c "cd $KERNELDEBLOBFOLDER && make -j$PROC deb-pkg 1> /dev/null && cp ../*.changes ../*.dsc ../*.deb ../*.orig.tar.* ../.debian.tar.* ../*.build ../" & 
+cd $KERNELDEBLOBFOLDER
+make -j$PROC deb-pkg 
+cp ../*.changes ../*.dsc ../*.deb ../*.orig.tar.* ../.debian.tar.* ../*.build ../
 
-#echo "Building Non-Free Kernel"
-#dash -c "cd "$KERNELBASEFOLDER" && make -j$PROC deb-pkg 1> /dev/null && cp ../*.changes ../*.dsc ../*.deb ../*.orig.tar.* ../.debian.tar.* ../*.build ../" &
+echo "Building Non-Free Kernel"
+cd $KERNELBASEFOLDER 
+make -j$PROC deb-pkg 
+cp ../*.changes ../*.dsc ../*.deb ../*.orig.tar.* ../.debian.tar.* ../*.build ../
 
