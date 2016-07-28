@@ -11,5 +11,6 @@ cd $TOME
 cp arch/arm/configs/antmseven_config .config
 export ARCH=arm
 export CROSS_COMPILE=arm-linux-gnueabihf-
+make olddefconfig
 make deb-pkg
 #make mrproper
