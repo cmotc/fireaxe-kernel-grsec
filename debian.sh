@@ -13,4 +13,5 @@ export ARCH=arm
 export CROSS_COMPILE=arm-linux-gnueabihf-
 make olddefconfig
 make deb-pkg
+make dtbs
 #make mrproper
