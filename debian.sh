@@ -13,7 +13,7 @@ cd $TOME
 BUILDS="arch/arm/configs/antm_seven_config arch/arm/configs/antm_seven_grsec arch/arm/configs/antm_seven_static"
 for config in $BUILDS; do
         make mrproper
-        cp arch/arm/configs/antm_seven_static .config
+        cp $config .config
         export LDFLAGS='-static'
         export ARCH=arm
         export CROSS_COMPILE=arm-linux-gnueabihf-
