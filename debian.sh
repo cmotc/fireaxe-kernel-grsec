@@ -14,7 +14,7 @@ BUILDS="arch/arm/configs/antm_seven_config arch/arm/configs/antm_seven_grsec arc
 for config in $BUILDS; do
         make mrproper
         cp $config .config
-        export LDFLAGS='-static'
+        #export LDFLAGS='-static'
         export ARCH=arm
         export CROSS_COMPILE=arm-linux-gnueabihf-
         make olddefconfig
