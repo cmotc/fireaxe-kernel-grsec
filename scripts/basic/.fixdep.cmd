@@ -1,4 +1,4 @@
-cmd_scripts/basic/fixdep := gcc -Wp,-MD,scripts/basic/.fixdep.d -W -Wno-unused-parameter -Wno-missing-field-initializers -fno-delete-null-pointer-checks  -Wno-empty-body     -o scripts/basic/fixdep scripts/basic/fixdep.c  
+cmd_scripts/basic/fixdep := gcc -Wp,-MD,scripts/basic/.fixdep.d -W -Wno-unused-parameter -Wno-missing-field-initializers -fno-delete-null-pointer-checks      -o scripts/basic/fixdep scripts/basic/fixdep.c  
 
 source_scripts/basic/fixdep := scripts/basic/fixdep.c
 
