@@ -1,4 +1,4 @@
-cmd_scripts/kconfig/nconf.o := gcc -Wp,-MD,scripts/kconfig/.nconf.o.d -W -Wno-unused-parameter -Wno-missing-field-initializers -fno-delete-null-pointer-checks    -D_GNU_SOURCE  -DCURSES_LOC="<ncurses.h>" -DLOCALE   -c -o scripts/kconfig/nconf.o scripts/kconfig/nconf.c
+cmd_scripts/kconfig/nconf.o := gcc -Wp,-MD,scripts/kconfig/.nconf.o.d -W -Wno-unused-parameter -Wno-missing-field-initializers -fno-delete-null-pointer-checks  -Wno-empty-body   -D_GNU_SOURCE  -DCURSES_LOC="<ncurses.h>" -DLOCALE   -c -o scripts/kconfig/nconf.o scripts/kconfig/nconf.c
 
 source_scripts/kconfig/nconf.o := scripts/kconfig/nconf.c
 
