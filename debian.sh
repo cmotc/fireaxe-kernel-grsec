@@ -10,10 +10,10 @@ cd $TOME
 
 #cp arch/arm/configs/antm_seven_config .config
 #cp arch/arm/configs/antm_seven_grsec .config
-BUILDS="arch/arm/configs/antm_seven_grsec
-arch/arm/configs/antm_seven_static
-arch/arm/configs/antm_seven_config
-arch/arm/configs/antmseven_config"
+#arch/arm/configs/antm_seven_grsec
+#arch/arm/configs/antm_seven_static
+#arch/arm/configs/antm_seven_config
+BUILDS="arch/arm/configs/antmseven_config"
 for config in $BUILDS; do
         make mrproper
         cp $config .config
