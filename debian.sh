@@ -13,7 +13,7 @@ cd $TOME
 #arch/arm/configs/antm_seven_grsec
 #arch/arm/configs/antm_seven_static
 #arch/arm/configs/antm_seven_config
-BUILDS="arch/arm/configs/antmseven_config"
+BUILDS="arch/arm/configs/antm_seven_working"
 for config in $BUILDS; do
         make mrproper
         cp $config .config
@@ -23,6 +23,7 @@ for config in $BUILDS; do
         make olddefconfig
         make dtbs
         make -j4 deb-pkg
+        cp arch/arm/boot/zImage ../zimage-$config
 done
 
 #cp arch/arm/configs/antm_seven_static .config
