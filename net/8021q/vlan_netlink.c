@@ -118,6 +118,7 @@ static int vlan_newlink(struct net *src_net, struct net_device *dev,
 {
 	struct vlan_dev_priv *vlan = vlan_dev_priv(dev);
 	struct net_device *real_dev;
+	unsigned int max_mtu;
 	__be16 proto;
 	int err;
 
@@ -144,9 +145,11 @@ static int vlan_newlink(struct net *src_net, struct net_device *dev,
 	if (err < 0)
 		return err;
 
+	max_mtu = netif_reduces_vlan_mtu(real_dev) ? real_dev->mtu - VLAN_HLEN :
+						     real_dev->mtu;
 	if (!tb[IFLA_MTU])
-		dev->mtu = real_dev->mtu;
-	else if (dev->mtu > real_dev->mtu)
+		dev->mtu = max_mtu;
+	else if (dev->mtu > max_mtu)
 		return -EINVAL;
 
 	err = vlan_changelink(dev, tb, data);
@@ -245,7 +248,7 @@ static struct net *vlan_get_link_net(const struct net_device *dev)
 	return dev_net(real_dev);
 }
 
-struct rtnl_link_ops vlan_link_ops = {
+struct rtnl_link_ops vlan_link_ops __read_mostly = {
 	.kind		= "vlan",
 	.maxtype	= IFLA_VLAN_MAX,
 	.policy		= vlan_policy,

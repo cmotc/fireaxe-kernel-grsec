@@ -156,7 +156,7 @@ static int p80211knetdev_open(netdevice_t *netdev)
 		return -ENODEV;
 
 	/* Tell the MSD to open */
-	if (wlandev->open != NULL) {
+	if (wlandev->open) {
 		result = wlandev->open(wlandev);
 		if (result == 0) {
 			netif_start_queue(wlandev->netdev);
@@ -186,7 +186,7 @@ static int p80211knetdev_stop(netdevice_t *netdev)
 	int result = 0;
 	wlandevice_t *wlandev = netdev->ml_priv;
 
-	if (wlandev->close != NULL)
+	if (wlandev->close)
 		result = wlandev->close(wlandev);
 
 	netif_stop_queue(wlandev->netdev);
@@ -317,7 +317,7 @@ static void p80211netdev_rx_bh(unsigned long arg)
 * Returns:
 *	zero on success, non-zero on failure.
 ----------------------------------------------------------------*/
-static netdev_tx_t p80211knetdev_hard_start_xmit(struct sk_buff *skb,
+static int p80211knetdev_hard_start_xmit(struct sk_buff *skb,
 					 netdevice_t *netdev)
 {
 	int result = 0;
@@ -393,7 +393,7 @@ static netdev_tx_t p80211knetdev_hard_start_xmit(struct sk_buff *skb,
 		goto failed;
 	}
 
-	netdev->trans_start = jiffies;
+	netif_trans_update(netdev);
 
 	netdev->stats.tx_packets++;
 	/* count only the packet payload */

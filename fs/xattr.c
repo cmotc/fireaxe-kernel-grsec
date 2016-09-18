@@ -100,7 +100,7 @@ int __vfs_setxattr_noperm(struct dentry *dentry, const char *name,
 	if (issec)
 		inode->i_flags &= ~S_NOSEC;
 	if (inode->i_op->setxattr) {
-		error = inode->i_op->setxattr(dentry, name, value, size, flags);
+		error = inode->i_op->setxattr(dentry, inode, name, value, size, flags);
 		if (!error) {
 			fsnotify_xattr(dentry);
 			security_inode_post_setxattr(dentry, name, value,
@@ -192,7 +192,7 @@ vfs_getxattr_alloc(struct dentry *dentry, const char *name, char **xattr_value,
 	if (!inode->i_op->getxattr)
 		return -EOPNOTSUPP;
 
-	error = inode->i_op->getxattr(dentry, name, NULL, 0);
+	error = inode->i_op->getxattr(dentry, inode, name, NULL, 0);
 	if (error < 0)
 		return error;
 
@@ -203,31 +203,10 @@ vfs_getxattr_alloc(struct dentry *dentry, const char *name, char **xattr_value,
 		memset(value, 0, error + 1);
 	}
 
-	error = inode->i_op->getxattr(dentry, name, value, error);
+	error = inode->i_op->getxattr(dentry, inode, name, value, error);
 	*xattr_value = value;
 	return error;
 }
-
-#ifdef CONFIG_PAX_XATTR_PAX_FLAGS
-ssize_t
-pax_getxattr(struct dentry *dentry, void *value, size_t size)
-{
-	struct inode *inode = dentry->d_inode;
-	ssize_t error;
-
-	error = inode_permission(inode, MAY_EXEC);
-	if (error)
-		return error;
-
-	if (inode->i_op->getxattr)
-		error = inode->i_op->getxattr(dentry, XATTR_NAME_USER_PAX_FLAGS, value, size);
-	else
-		error = -EOPNOTSUPP;
-
-	return error;
-}
-EXPORT_SYMBOL(pax_getxattr);
-#endif
 
 ssize_t
 vfs_getxattr(struct dentry *dentry, const char *name, void *value, size_t size)
@@ -257,7 +236,7 @@ vfs_getxattr(struct dentry *dentry, const char *name, void *value, size_t size)
 	}
 nolsm:
 	if (inode->i_op->getxattr)
-		error = inode->i_op->getxattr(dentry, name, value, size);
+		error = inode->i_op->getxattr(dentry, inode, name, value, size);
 	else
 		error = -EOPNOTSUPP;
 
@@ -321,7 +300,7 @@ EXPORT_SYMBOL_GPL(vfs_removexattr);
  * Extended attribute SET operations
  */
 static long
-setxattr(struct path *path, const char __user *name, const void __user *value,
+setxattr(struct dentry *d, const char __user *name, const void __user *value,
 	 size_t size, int flags)
 {
 	int error;
@@ -355,12 +334,7 @@ setxattr(struct path *path, const char __user *name, const void __user *value,
 			posix_acl_fix_xattr_from_user(kvalue, size);
 	}
 
-	if (!gr_acl_handle_setxattr(path->dentry, path->mnt)) {
-		error = -EACCES;
-		goto out;
-	}
-
-	error = vfs_setxattr(path->dentry, kname, kvalue, size, flags);
+	error = vfs_setxattr(d, kname, kvalue, size, flags);
 out:
 	kvfree(kvalue);
 
@@ -379,7 +353,7 @@ retry:
 		return error;
 	error = mnt_want_write(path.mnt);
 	if (!error) {
-		error = setxattr(&path, name, value, size, flags);
+		error = setxattr(path.dentry, name, value, size, flags);
 		mnt_drop_write(path.mnt);
 	}
 	path_put(&path);
@@ -415,7 +389,7 @@ SYSCALL_DEFINE5(fsetxattr, int, fd, const char __user *, name,
 	audit_file(f.file);
 	error = mnt_want_write_file(f.file);
 	if (!error) {
-		error = setxattr(&f.file->f_path, name, value, size, flags);
+		error = setxattr(f.file->f_path.dentry, name, value, size, flags);
 		mnt_drop_write_file(f.file);
 	}
 	fdput(f);
@@ -595,7 +569,7 @@ SYSCALL_DEFINE3(flistxattr, int, fd, char __user *, list, size_t, size)
  * Extended attribute REMOVE operations
  */
 static long
-removexattr(struct path *path, const char __user *name)
+removexattr(struct dentry *d, const char __user *name)
 {
 	int error;
 	char kname[XATTR_NAME_MAX + 1];
@@ -606,10 +580,7 @@ removexattr(struct path *path, const char __user *name)
 	if (error < 0)
 		return error;
 
-	if (!gr_acl_handle_removexattr(path->dentry, path->mnt))
-		return -EACCES;
-
-	return vfs_removexattr(path->dentry, kname);
+	return vfs_removexattr(d, kname);
 }
 
 static int path_removexattr(const char __user *pathname,
@@ -623,7 +594,7 @@ retry:
 		return error;
 	error = mnt_want_write(path.mnt);
 	if (!error) {
-		error = removexattr(&path, name);
+		error = removexattr(path.dentry, name);
 		mnt_drop_write(path.mnt);
 	}
 	path_put(&path);
@@ -649,16 +620,14 @@ SYSCALL_DEFINE2(lremovexattr, const char __user *, pathname,
 SYSCALL_DEFINE2(fremovexattr, int, fd, const char __user *, name)
 {
 	struct fd f = fdget(fd);
-	struct path *path;
 	int error = -EBADF;
 
 	if (!f.file)
 		return error;
-	path = &f.file->f_path;
 	audit_file(f.file);
 	error = mnt_want_write_file(f.file);
 	if (!error) {
-		error = removexattr(path, name);
+		error = removexattr(f.file->f_path.dentry, name);
 		mnt_drop_write_file(f.file);
 	}
 	fdput(f);
@@ -686,6 +655,7 @@ strcmp_prefix(const char *a, const char *a_prefix)
  * operations to the correct xattr_handler.
  */
 #define for_each_xattr_handler(handlers, handler)		\
+	if (handlers)						\
 		for ((handler) = *(handlers)++;			\
 			(handler) != NULL;			\
 			(handler) = *(handlers)++)
@@ -699,7 +669,7 @@ xattr_resolve_name(const struct xattr_handler **handlers, const char **name)
 	const struct xattr_handler *handler;
 
 	if (!*name)
-		return NULL;
+		return ERR_PTR(-EINVAL);
 
 	for_each_xattr_handler(handlers, handler) {
 		const char *n;
@@ -722,14 +692,16 @@ xattr_resolve_name(const struct xattr_handler **handlers, const char **name)
  * Find the handler for the prefix and dispatch its get() operation.
  */
 ssize_t
-generic_getxattr(struct dentry *dentry, const char *name, void *buffer, size_t size)
+generic_getxattr(struct dentry *dentry, struct inode *inode,
+		 const char *name, void *buffer, size_t size)
 {
 	const struct xattr_handler *handler;
 
 	handler = xattr_resolve_name(dentry->d_sb->s_xattr, &name);
 	if (IS_ERR(handler))
 		return PTR_ERR(handler);
-	return handler->get(handler, dentry, name, buffer, size);
+	return handler->get(handler, dentry, inode,
+			    name, buffer, size);
 }
 
 /*
@@ -773,7 +745,8 @@ generic_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size)
  * Find the handler for the prefix and dispatch its set() operation.
  */
 int
-generic_setxattr(struct dentry *dentry, const char *name, const void *value, size_t size, int flags)
+generic_setxattr(struct dentry *dentry, struct inode *inode, const char *name,
+		 const void *value, size_t size, int flags)
 {
 	const struct xattr_handler *handler;
 
@@ -782,7 +755,7 @@ generic_setxattr(struct dentry *dentry, const char *name, const void *value, siz
 	handler = xattr_resolve_name(dentry->d_sb->s_xattr, &name);
 	if (IS_ERR(handler))
 		return PTR_ERR(handler);
-	return handler->set(handler, dentry, name, value, size, flags);
+	return handler->set(handler, dentry, inode, name, value, size, flags);
 }
 
 /*
@@ -797,7 +770,8 @@ generic_removexattr(struct dentry *dentry, const char *name)
 	handler = xattr_resolve_name(dentry->d_sb->s_xattr, &name);
 	if (IS_ERR(handler))
 		return PTR_ERR(handler);
-	return handler->set(handler, dentry, name, NULL, 0, XATTR_REPLACE);
+	return handler->set(handler, dentry, d_inode(dentry), name, NULL,
+			    0, XATTR_REPLACE);
 }
 
 EXPORT_SYMBOL(generic_getxattr);

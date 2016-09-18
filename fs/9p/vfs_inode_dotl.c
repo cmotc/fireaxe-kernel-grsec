@@ -179,7 +179,7 @@ static int v9fs_mapped_dotl_flags(int flags)
 {
 	int i;
 	int rflags = 0;
-	static const struct dotl_openflag_map dotl_oflag_map[] = {
+	struct dotl_openflag_map dotl_oflag_map[] = {
 		{ O_CREAT,	P9_DOTL_CREATE },
 		{ O_EXCL,	P9_DOTL_EXCL },
 		{ O_NOCTTY,	P9_DOTL_NOCTTY },
@@ -254,7 +254,7 @@ v9fs_vfs_atomic_open_dotl(struct inode *dir, struct dentry *dentry,
 	struct posix_acl *pacl = NULL, *dacl = NULL;
 	struct dentry *res = NULL;
 
-	if (d_unhashed(dentry)) {
+	if (d_in_lookup(dentry)) {
 		res = v9fs_vfs_lookup(dir, dentry, 0);
 		if (IS_ERR(res))
 			return PTR_ERR(res);
@@ -526,7 +526,7 @@ static int v9fs_mapped_iattr_valid(int iattr_valid)
 {
 	int i;
 	int p9_iattr_valid = 0;
-	static const struct dotl_iattr_map dotl_iattr_map[] = {
+	struct dotl_iattr_map dotl_iattr_map[] = {
 		{ ATTR_MODE,		P9_ATTR_MODE },
 		{ ATTR_UID,		P9_ATTR_UID },
 		{ ATTR_GID,		P9_ATTR_GID },

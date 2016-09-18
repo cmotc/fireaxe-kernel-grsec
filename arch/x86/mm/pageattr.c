@@ -258,7 +258,7 @@ static inline pgprot_t static_protections(pgprot_t prot, unsigned long address,
 	 */
 #ifdef CONFIG_PCI_BIOS
 	if (pcibios_enabled && within(pfn, BIOS_BEGIN >> PAGE_SHIFT, BIOS_END >> PAGE_SHIFT))
-		pgprot_val(forbidden) |= _PAGE_NX & __supported_pte_mask;
+		pgprot_val(forbidden) |= _PAGE_NX;
 #endif
 
 	/*
@@ -266,14 +266,14 @@ static inline pgprot_t static_protections(pgprot_t prot, unsigned long address,
 	 * Does not cover __inittext since that is gone later on. On
 	 * 64bit we do not enforce !NX on the low mapping
 	 */
-	if (within(address, ktla_ktva((unsigned long)_text), ktla_ktva((unsigned long)_etext)))
-		pgprot_val(forbidden) |= _PAGE_NX & __supported_pte_mask;
+	if (within(address, (unsigned long)_text, (unsigned long)_etext))
+		pgprot_val(forbidden) |= _PAGE_NX;
 
 	/*
 	 * The .rodata section needs to be read-only. Using the pfn
 	 * catches all aliases.
 	 */
-	if (kernel_set_to_readonly && within(pfn, __pa_symbol(__start_rodata) >> PAGE_SHIFT,
+	if (within(pfn, __pa_symbol(__start_rodata) >> PAGE_SHIFT,
 		   __pa_symbol(__end_rodata) >> PAGE_SHIFT))
 		pgprot_val(forbidden) |= _PAGE_RW;
 
@@ -311,13 +311,6 @@ static inline pgprot_t static_protections(pgprot_t prot, unsigned long address,
 		 */
 		if (lookup_address(address, &level) && (level != PG_LEVEL_4K))
 			pgprot_val(forbidden) |= _PAGE_RW;
-	}
-#endif
-
-#ifdef CONFIG_PAX_KERNEXEC
-	if (within(pfn, __pa(ktla_ktva((unsigned long)&_text)), __pa((unsigned long)&_sdata))) {
-		pgprot_val(forbidden) |= _PAGE_RW;
-		pgprot_val(forbidden) |= _PAGE_NX & __supported_pte_mask;
 	}
 #endif
 
@@ -457,37 +450,23 @@ EXPORT_SYMBOL_GPL(slow_virt_to_phys);
 static void __set_pmd_pte(pte_t *kpte, unsigned long address, pte_t pte)
 {
 	/* change init_mm */
-	pax_open_kernel();
 	set_pte_atomic(kpte, pte);
-
 #ifdef CONFIG_X86_32
 	if (!SHARED_KERNEL_PMD) {
-
-#ifdef CONFIG_PAX_PER_CPU_PGD
-		unsigned long cpu;
-#else
 		struct page *page;
-#endif
 
-#ifdef CONFIG_PAX_PER_CPU_PGD
-		for (cpu = 0; cpu < nr_cpu_ids; ++cpu) {
-			pgd_t *pgd = get_cpu_pgd(cpu, kernel);
-#else
 		list_for_each_entry(page, &pgd_list, lru) {
-			pgd_t *pgd = (pgd_t *)page_address(page);
-#endif
-
+			pgd_t *pgd;
 			pud_t *pud;
 			pmd_t *pmd;
 
-			pgd += pgd_index(address);
+			pgd = (pgd_t *)page_address(page) + pgd_index(address);
 			pud = pud_offset(pgd, address);
 			pmd = pmd_offset(pud, address);
 			set_pte_atomic((pte_t *)pmd, pte);
 		}
 	}
 #endif
-	pax_close_kernel();
 }
 
 static int
@@ -724,8 +703,6 @@ __split_large_page(struct cpa_data *cpa, pte_t *kpte, unsigned long address,
 	return 0;
 }
 
-static int split_large_page(struct cpa_data *cpa, pte_t *kpte,
-			    unsigned long address) __must_hold(&cpa_lock);
 static int split_large_page(struct cpa_data *cpa, pte_t *kpte,
 			    unsigned long address)
 {
@@ -1078,7 +1055,7 @@ static int populate_pud(struct cpa_data *cpa, unsigned long start, pgd_t *pgd,
 	/*
 	 * Map everything starting from the Gb boundary, possibly with 1G pages
 	 */
-	while (cpu_has_gbpages && end - start >= PUD_SIZE) {
+	while (boot_cpu_has(X86_FEATURE_GBPAGES) && end - start >= PUD_SIZE) {
 		set_pud(pud, __pud(cpa->pfn << PAGE_SHIFT | _PAGE_PSE |
 				   massage_pgprot(pud_pgprot)));
 
@@ -1148,8 +1125,14 @@ static int populate_pgd(struct cpa_data *cpa, unsigned long addr)
 static int __cpa_process_fault(struct cpa_data *cpa, unsigned long vaddr,
 			       int primary)
 {
-	if (cpa->pgd)
+	if (cpa->pgd) {
+		/*
+		 * Right now, we only execute this code path when mapping
+		 * the EFI virtual memory map regions, no other users
+		 * provide a ->pgd value. This may change in the future.
+		 */
 		return populate_pgd(cpa, vaddr);
+	}
 
 	/*
 	 * Ignore all non primary paths.
@@ -1180,7 +1163,6 @@ static int __cpa_process_fault(struct cpa_data *cpa, unsigned long vaddr,
 	}
 }
 
-static int __change_page_attr(struct cpa_data *cpa, int primary) __must_hold(&cpa_lock);
 static int __change_page_attr(struct cpa_data *cpa, int primary)
 {
 	unsigned long address;
@@ -1239,9 +1221,7 @@ repeat:
 		 * Do we really change anything ?
 		 */
 		if (pte_val(old_pte) != pte_val(new_pte)) {
-			pax_open_kernel();
 			set_pte_atomic(kpte, new_pte);
-			pax_close_kernel();
 			cpa->flags |= CPA_FLUSHTLB;
 		}
 		cpa->numpages = 1;
@@ -1486,7 +1466,7 @@ static int change_page_attr_set_clr(unsigned long *addr, int numpages,
 	 * error case we fall back to cpa_flush_all (which uses
 	 * WBINVD):
 	 */
-	if (!ret && cpu_has_clflush) {
+	if (!ret && boot_cpu_has(X86_FEATURE_CLFLUSH)) {
 		if (cpa.flags & (CPA_PAGES_ARRAY | CPA_ARRAY)) {
 			cpa_flush_array(addr, numpages, cache,
 					cpa.flags, pages);

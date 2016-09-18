@@ -865,6 +865,8 @@ static struct ttm_bo_driver radeon_bo_driver = {
 	.fault_reserve_notify = &radeon_bo_fault_reserve_notify,
 	.io_mem_reserve = &radeon_ttm_io_mem_reserve,
 	.io_mem_free = &radeon_ttm_io_mem_free,
+	.lru_tail = &ttm_bo_default_lru_tail,
+	.swap_lru_tail = &ttm_bo_default_swap_lru_tail,
 };
 
 int radeon_ttm_init(struct radeon_device *rdev)
@@ -968,7 +970,7 @@ void radeon_ttm_set_active_vram_size(struct radeon_device *rdev, u64 size)
 	man->size = size >> PAGE_SHIFT;
 }
 
-static vm_operations_struct_no_const radeon_ttm_vm_ops __read_only;
+static struct vm_operations_struct radeon_ttm_vm_ops;
 static const struct vm_operations_struct *ttm_vm_ops = NULL;
 
 static int radeon_ttm_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
@@ -1009,10 +1011,8 @@ int radeon_mmap(struct file *filp, struct vm_area_struct *vma)
 	}
 	if (unlikely(ttm_vm_ops == NULL)) {
 		ttm_vm_ops = vma->vm_ops;
-		pax_open_kernel();
 		radeon_ttm_vm_ops = *ttm_vm_ops;
 		radeon_ttm_vm_ops.fault = &radeon_ttm_fault;
-		pax_close_kernel();
 	}
 	vma->vm_ops = &radeon_ttm_vm_ops;
 	return 0;

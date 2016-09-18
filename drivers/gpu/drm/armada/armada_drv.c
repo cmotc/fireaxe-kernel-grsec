@@ -113,7 +113,6 @@ static int armada_drm_load(struct drm_device *dev, unsigned long flags)
 		goto err_comp;
 
 	dev->irq_enabled = true;
-	dev->vblank_disable_allowed = 1;
 
 	ret = armada_fbdev_init(dev);
 	if (ret)
@@ -215,7 +214,6 @@ static struct drm_driver armada_drm_driver = {
 	.driver_features	= DRIVER_GEM | DRIVER_MODESET |
 				  DRIVER_HAVE_IRQ | DRIVER_PRIME,
 	.ioctls			= armada_ioctls,
-	.num_ioctls		= ARRAY_SIZE(armada_ioctls),
 	.fops			= &armada_drm_fops,
 };
 
@@ -335,6 +333,8 @@ static struct platform_driver armada_drm_platform_driver = {
 static int __init armada_drm_init(void)
 {
 	int ret;
+
+	armada_drm_driver.num_ioctls = ARRAY_SIZE(armada_ioctls);
 
 	ret = platform_driver_register(&armada_lcd_platform_driver);
 	if (ret)

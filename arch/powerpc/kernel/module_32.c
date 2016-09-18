@@ -158,7 +158,7 @@ int module_frob_arch_sections(Elf32_Ehdr *hdr,
 			me->arch.core_plt_section = i;
 	}
 	if (!me->arch.core_plt_section || !me->arch.init_plt_section) {
-		pr_err("Module $s doesn't contain .plt or .init.plt sections.\n", me->name);
+		pr_err("Module doesn't contain .plt or .init.plt sections.\n");
 		return -ENOEXEC;
 	}
 
@@ -188,16 +188,11 @@ static uint32_t do_plt_call(void *location,
 
 	pr_debug("Doing plt for call to 0x%x at 0x%x\n", val, (unsigned int)location);
 	/* Init, or core PLT? */
-	if ((location >= mod->core_layout.base_rx && location < mod->core_layout.base_rx + mod->core_layout.size_rx) ||
-	    (location >= mod->core_layout.base_rw && location < mod->core_layout.base_rw + mod->core_layout.size_rw))
+	if (location >= mod->core_layout.base
+	    && location < mod->core_layout.base + mod->core_layout.size)
 		entry = (void *)sechdrs[mod->arch.core_plt_section].sh_addr;
-	else if ((location >= mod->init_layout.base_rx && location < mod->init_layout.base_rx + mod->init_layout.size_rx) ||
-		 (location >= mod->init_layout.base_rw && location < mod->init_layout.base_rw + mod->init_layout.size_rw))
+	else
 		entry = (void *)sechdrs[mod->arch.init_plt_section].sh_addr;
-	else {
-		printk(KERN_ERR "%s: invalid R_PPC_REL24 entry found\n", mod->name);
-		return ~0UL;
-	}
 
 	/* Find this entry, or if that fails, the next avail. entry */
 	while (entry->jump[0]) {
@@ -306,7 +301,7 @@ int apply_relocate_add(Elf32_Shdr *sechdrs,
 #ifdef CONFIG_DYNAMIC_FTRACE
 int module_finalize_ftrace(struct module *module, const Elf_Shdr *sechdrs)
 {
-	module->arch.tramp = do_plt_call(module->core_layout.base_rx,
+	module->arch.tramp = do_plt_call(module->core_layout.base,
 					 (unsigned long)ftrace_caller,
 					 sechdrs, module);
 	if (!module->arch.tramp)

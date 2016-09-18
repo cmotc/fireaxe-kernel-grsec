@@ -34,17 +34,17 @@ void ack_bad_irq(unsigned int irq)
 	printk("unexpected IRQ # %d\n", irq);
 }
 
-atomic_unchecked_t irq_err_count;
+atomic_t irq_err_count;
 
 int arch_show_interrupts(struct seq_file *p, int prec)
 {
-	seq_printf(p, "%*s: %10u\n", prec, "ERR", atomic_read_unchecked(&irq_err_count));
+	seq_printf(p, "%*s: %10u\n", prec, "ERR", atomic_read(&irq_err_count));
 	return 0;
 }
 
 asmlinkage void spurious_interrupt(void)
 {
-	atomic_inc_unchecked(&irq_err_count);
+	atomic_inc(&irq_err_count);
 }
 
 void __init init_IRQ(void)
@@ -54,12 +54,13 @@ void __init init_IRQ(void)
 	for (i = 0; i < NR_IRQS; i++)
 		irq_set_noprobe(i);
 
+	if (cpu_has_veic)
+		clear_c0_status(ST0_IM);
+
 	arch_init_irq();
 }
 
 #ifdef CONFIG_DEBUG_STACKOVERFLOW
-
-extern void gr_handle_kernel_exploit(void);
 static inline void check_stack_overflow(void)
 {
 	unsigned long sp;
@@ -75,7 +76,6 @@ static inline void check_stack_overflow(void)
 		printk("do_IRQ: stack overflow: %ld\n",
 		       sp - sizeof(struct thread_info));
 		dump_stack();
-		gr_handle_kernel_exploit();
 	}
 }
 #else

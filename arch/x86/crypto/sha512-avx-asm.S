@@ -49,7 +49,6 @@
 
 #ifdef CONFIG_AS_AVX
 #include <linux/linkage.h>
-#include <asm/alternative-asm.h>
 
 .text
 
@@ -278,8 +277,7 @@ frame_size = frame_GPRSAVE + GPRSAVE_SIZE
 # message blocks.
 # L is the message length in SHA512 blocks
 ########################################################################
-ALIGN
-RAP_ENTRY(sha512_transform_avx)
+ENTRY(sha512_transform_avx)
 	cmp $0, msglen
 	je nowork
 
@@ -366,7 +364,6 @@ updateblock:
 	mov	frame_RSPSAVE(%rsp), %rsp
 
 nowork:
-	pax_force_retaddr
 	ret
 ENDPROC(sha512_transform_avx)
 

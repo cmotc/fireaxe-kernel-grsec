@@ -16,7 +16,6 @@
  */
 
 #include <linux/linkage.h>
-#include <asm/alternative-asm.h>
 
 /*
  * override generic version in lib/iomap_copy.c
@@ -24,6 +23,5 @@
 ENTRY(__iowrite32_copy)
 	movl %edx,%ecx
 	rep movsd
-	pax_force_retaddr
 	ret
 ENDPROC(__iowrite32_copy)

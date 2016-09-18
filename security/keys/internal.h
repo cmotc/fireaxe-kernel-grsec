@@ -15,6 +15,7 @@
 #include <linux/sched.h>
 #include <linux/key-type.h>
 #include <linux/task_work.h>
+#include <linux/keyctl.h>
 
 struct iovec;
 
@@ -90,16 +91,12 @@ extern void key_type_put(struct key_type *ktype);
 
 extern int __key_link_begin(struct key *keyring,
 			    const struct keyring_index_key *index_key,
-			    struct assoc_array_edit **_edit)
-			    __acquires(&keyring->sem)
-			    __acquires(&keyring_serialise_link_sem);
+			    struct assoc_array_edit **_edit);
 extern int __key_link_check_live_key(struct key *keyring, struct key *key);
 extern void __key_link(struct key *key, struct assoc_array_edit **_edit);
 extern void __key_link_end(struct key *keyring,
 			   const struct keyring_index_key *index_key,
-			   struct assoc_array_edit *edit)
-			   __releases(&keyring->sem)
-			   __releases(&keyring_serialise_link_sem);
+			   struct assoc_array_edit *edit);
 
 extern key_ref_t find_key_to_update(key_ref_t keyring_ref,
 				    const struct keyring_index_key *index_key);
@@ -195,7 +192,7 @@ struct request_key_auth {
 	void			*callout_info;
 	size_t			callout_len;
 	pid_t			pid;
-} __randomize_layout;
+};
 
 extern struct key_type key_type_request_key_auth;
 extern struct key *request_key_auth_new(struct key *target,
@@ -256,6 +253,18 @@ extern long keyctl_get_persistent(uid_t, key_serial_t);
 extern unsigned persistent_keyring_expiry;
 #else
 static inline long keyctl_get_persistent(uid_t uid, key_serial_t destring)
+{
+	return -EOPNOTSUPP;
+}
+#endif
+
+#ifdef CONFIG_KEY_DH_OPERATIONS
+extern long keyctl_dh_compute(struct keyctl_dh_params __user *, char __user *,
+			      size_t, void __user *);
+#else
+static inline long keyctl_dh_compute(struct keyctl_dh_params __user *params,
+				     char __user *buffer, size_t buflen,
+				     void __user *reserved)
 {
 	return -EOPNOTSUPP;
 }

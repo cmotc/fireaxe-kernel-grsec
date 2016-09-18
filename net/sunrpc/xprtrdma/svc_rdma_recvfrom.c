@@ -200,7 +200,7 @@ int rdma_read_chunk_lcl(struct svcxprt_rdma *xprt,
 	*page_no = pg_no;
 	*page_offset = pg_off;
 	ret = read;
-	atomic_inc_unchecked(&rdma_stat_read);
+	atomic_inc(&rdma_stat_read);
 	return ret;
  err:
 	svc_rdma_unmap_dma(ctxt);
@@ -281,7 +281,7 @@ int rdma_read_chunk_frmr(struct svcxprt_rdma *xprt,
 	}
 	atomic_inc(&xprt->sc_dma_used);
 
-	n = ib_map_mr_sg(frmr->mr, frmr->sg, frmr->sg_nents, PAGE_SIZE);
+	n = ib_map_mr_sg(frmr->mr, frmr->sg, frmr->sg_nents, NULL, PAGE_SIZE);
 	if (unlikely(n != frmr->sg_nents)) {
 		pr_err("svcrdma: failed to map mr %p (%d/%d elements)\n",
 		       frmr->mr, n, frmr->sg_nents);
@@ -345,7 +345,7 @@ int rdma_read_chunk_frmr(struct svcxprt_rdma *xprt,
 	*page_no = pg_no;
 	*page_offset = pg_off;
 	ret = read;
-	atomic_inc_unchecked(&rdma_stat_read);
+	atomic_inc(&rdma_stat_read);
 	return ret;
  err:
 	ib_dma_unmap_sg(xprt->sc_cm_id->device,
@@ -447,10 +447,8 @@ static int rdma_read_chunks(struct svcxprt_rdma *xprt,
 	head->arg.len = rqstp->rq_arg.len;
 	head->arg.buflen = rqstp->rq_arg.buflen;
 
-	ch = (struct rpcrdma_read_chunk *)&rmsgp->rm_body.rm_chunks[0];
-	position = be32_to_cpu(ch->rc_position);
-
 	/* RDMA_NOMSG: RDMA READ data should land just after RDMA RECV data */
+	position = be32_to_cpu(ch->rc_position);
 	if (position == 0) {
 		head->arg.pages = &head->pages[0];
 		page_offset = head->byte_len;
@@ -488,7 +486,7 @@ static int rdma_read_chunks(struct svcxprt_rdma *xprt,
 	if (page_offset & 3) {
 		u32 pad = 4 - (page_offset & 3);
 
-		head->arg.page_len += pad;
+		head->arg.tail[0].iov_len += pad;
 		head->arg.len += pad;
 		head->arg.buflen += pad;
 		page_offset += pad;
@@ -510,11 +508,10 @@ static int rdma_read_chunks(struct svcxprt_rdma *xprt,
 	return ret;
 }
 
-static int rdma_read_complete(struct svc_rqst *rqstp,
-			      struct svc_rdma_op_ctxt *head)
+static void rdma_read_complete(struct svc_rqst *rqstp,
+			       struct svc_rdma_op_ctxt *head)
 {
 	int page_no;
-	int ret;
 
 	/* Copy RPC pages */
 	for (page_no = 0; page_no < head->count; page_no++) {
@@ -550,23 +547,6 @@ static int rdma_read_complete(struct svc_rqst *rqstp,
 	rqstp->rq_arg.tail[0] = head->arg.tail[0];
 	rqstp->rq_arg.len = head->arg.len;
 	rqstp->rq_arg.buflen = head->arg.buflen;
-
-	/* Free the context */
-	svc_rdma_put_context(head, 0);
-
-	/* XXX: What should this be? */
-	rqstp->rq_prot = IPPROTO_MAX;
-	svc_xprt_copy_addrs(rqstp, rqstp->rq_xprt);
-
-	ret = rqstp->rq_arg.head[0].iov_len
-		+ rqstp->rq_arg.page_len
-		+ rqstp->rq_arg.tail[0].iov_len;
-	dprintk("svcrdma: deferred read ret=%d, rq_arg.len=%u, "
-		"rq_arg.head[0].iov_base=%p, rq_arg.head[0].iov_len=%zu\n",
-		ret, rqstp->rq_arg.len,	rqstp->rq_arg.head[0].iov_base,
-		rqstp->rq_arg.head[0].iov_len);
-
-	return ret;
 }
 
 /* By convention, backchannel calls arrive via rdma_msg type
@@ -624,14 +604,15 @@ int svc_rdma_recvfrom(struct svc_rqst *rqstp)
 				  dto_q);
 		list_del_init(&ctxt->dto_q);
 		spin_unlock_bh(&rdma_xprt->sc_rq_dto_lock);
-		return rdma_read_complete(rqstp, ctxt);
+		rdma_read_complete(rqstp, ctxt);
+		goto complete;
 	} else if (!list_empty(&rdma_xprt->sc_rq_dto_q)) {
 		ctxt = list_entry(rdma_xprt->sc_rq_dto_q.next,
 				  struct svc_rdma_op_ctxt,
 				  dto_q);
 		list_del_init(&ctxt->dto_q);
 	} else {
-		atomic_inc_unchecked(&rdma_stat_rq_starve);
+		atomic_inc(&rdma_stat_rq_starve);
 		clear_bit(XPT_DATA, &xprt->xpt_flags);
 		ctxt = NULL;
 	}
@@ -648,14 +629,14 @@ int svc_rdma_recvfrom(struct svc_rqst *rqstp)
 	}
 	dprintk("svcrdma: processing ctxt=%p on xprt=%p, rqstp=%p, status=%d\n",
 		ctxt, rdma_xprt, rqstp, ctxt->wc_status);
-	atomic_inc_unchecked(&rdma_stat_recv);
+	atomic_inc(&rdma_stat_recv);
 
 	/* Build up the XDR from the receive buffers. */
 	rdma_build_arg_xdr(rqstp, ctxt, ctxt->byte_len);
 
 	/* Decode the RDMA header. */
 	rmsgp = (struct rpcrdma_msg *)rqstp->rq_arg.head[0].iov_base;
-	ret = svc_rdma_xdr_decode_req(rmsgp, rqstp);
+	ret = svc_rdma_xdr_decode_req(&rqstp->rq_arg);
 	if (ret < 0)
 		goto out_err;
 	if (ret == 0)
@@ -682,6 +663,7 @@ int svc_rdma_recvfrom(struct svc_rqst *rqstp)
 		return 0;
 	}
 
+complete:
 	ret = rqstp->rq_arg.head[0].iov_len
 		+ rqstp->rq_arg.page_len
 		+ rqstp->rq_arg.tail[0].iov_len;

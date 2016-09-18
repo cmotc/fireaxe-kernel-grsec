@@ -20,7 +20,6 @@
 #include <linux/cpu_pm.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
-#include <linux/irq.h>
 #include <linux/irqchip/arm-gic.h>
 #include <linux/irq.h>
 #include <linux/kernel.h>

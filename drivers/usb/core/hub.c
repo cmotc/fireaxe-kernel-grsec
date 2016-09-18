@@ -26,7 +26,6 @@
 #include <linux/mutex.h>
 #include <linux/random.h>
 #include <linux/pm_qos.h>
-#include <linux/grsecurity.h>
 
 #include <asm/uaccess.h>
 #include <asm/byteorder.h>
@@ -105,6 +104,8 @@ static int usb_reset_and_verify_device(struct usb_device *udev);
 
 static inline char *portspeed(struct usb_hub *hub, int portstatus)
 {
+	if (hub_is_superspeedplus(hub->hdev))
+		return "10.0 Gb/s";
 	if (hub_is_superspeed(hub->hdev))
 		return "5.0 Gb/s";
 	if (portstatus & USB_PORT_STAT_HIGH_SPEED)
@@ -4789,10 +4790,6 @@ static void hub_port_connect(struct usb_hub *hub, int port1, u16 portstatus,
 			goto done;
 		return;
 	}
-
-	if (gr_handle_new_usb())
-		goto done;
-
 	if (hub_is_superspeed(hub->hdev))
 		unit_load = 150;
 	else

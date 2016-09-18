@@ -37,7 +37,7 @@
 #include "qxl_drv.h"
 #include "qxl_object.h"
 
-extern const int qxl_max_ioctls;
+extern int qxl_max_ioctls;
 static const struct pci_device_id pciidlist[] = {
 	{ 0x1b36, 0x100, PCI_ANY_ID, PCI_ANY_ID, PCI_CLASS_DISPLAY_VGA << 8,
 	  0xffff00, 0 },
@@ -272,18 +272,12 @@ static struct drm_driver qxl_driver = {
 
 static int __init qxl_init(void)
 {
-#ifdef CONFIG_VGA_CONSOLE
 	if (vgacon_text_force() && qxl_modeset == -1)
 		return -EINVAL;
-#endif
 
 	if (qxl_modeset == 0)
 		return -EINVAL;
-
-	pax_open_kernel();
-	const_cast(qxl_driver.num_ioctls) = qxl_max_ioctls;
-	pax_close_kernel();
-
+	qxl_driver.num_ioctls = qxl_max_ioctls;
 	return drm_pci_init(&qxl_driver, &qxl_pci_driver);
 }
 

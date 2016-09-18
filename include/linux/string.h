@@ -18,51 +18,51 @@ extern void *memdup_user_nul(const void __user *, size_t);
 #include <asm/string.h>
 
 #ifndef __HAVE_ARCH_STRCPY
-extern char * strcpy(char *,const char *) __nocapture(2);
+extern char * strcpy(char *,const char *);
 #endif
 #ifndef __HAVE_ARCH_STRNCPY
-extern char * strncpy(char *,const char *, __kernel_size_t) __nocapture(2);
+extern char * strncpy(char *,const char *, __kernel_size_t);
 #endif
 #ifndef __HAVE_ARCH_STRLCPY
-size_t strlcpy(char *, const char *, size_t) __nocapture(2);
+size_t strlcpy(char *, const char *, size_t);
 #endif
 #ifndef __HAVE_ARCH_STRSCPY
-ssize_t __must_check strscpy(char *, const char *, size_t) __nocapture(2);
+ssize_t __must_check strscpy(char *, const char *, size_t);
 #endif
 #ifndef __HAVE_ARCH_STRCAT
-extern char * strcat(char *, const char *) __nocapture(2);
+extern char * strcat(char *, const char *);
 #endif
 #ifndef __HAVE_ARCH_STRNCAT
-extern char * strncat(char *, const char *, __kernel_size_t) __nocapture(2);
+extern char * strncat(char *, const char *, __kernel_size_t);
 #endif
 #ifndef __HAVE_ARCH_STRLCAT
-extern size_t strlcat(char *, const char *, __kernel_size_t) __nocapture(2);
+extern size_t strlcat(char *, const char *, __kernel_size_t);
 #endif
 #ifndef __HAVE_ARCH_STRCMP
-extern int strcmp(const char *,const char *) __nocapture(1, 2);
+extern int strcmp(const char *,const char *);
 #endif
 #ifndef __HAVE_ARCH_STRNCMP
-extern int strncmp(const char *,const char *,__kernel_size_t) __nocapture(1, 2);
+extern int strncmp(const char *,const char *,__kernel_size_t);
 #endif
 #ifndef __HAVE_ARCH_STRCASECMP
-extern int strcasecmp(const char *s1, const char *s2) __nocapture(1, 2);
+extern int strcasecmp(const char *s1, const char *s2);
 #endif
 #ifndef __HAVE_ARCH_STRNCASECMP
-extern int strncasecmp(const char *s1, const char *s2, size_t n) __nocapture(1, 2);
+extern int strncasecmp(const char *s1, const char *s2, size_t n);
 #endif
 #ifndef __HAVE_ARCH_STRCHR
-extern char * strchr(const char *,int) __nocapture(1);
+extern char * strchr(const char *,int);
 #endif
 #ifndef __HAVE_ARCH_STRCHRNUL
-extern char * strchrnul(const char *,int) __nocapture(1);
+extern char * strchrnul(const char *,int);
 #endif
 #ifndef __HAVE_ARCH_STRNCHR
-extern char * strnchr(const char *, size_t, int) __nocapture(1);
+extern char * strnchr(const char *, size_t, int);
 #endif
 #ifndef __HAVE_ARCH_STRRCHR
-extern char * strrchr(const char *,int) __nocapture(1);
+extern char * strrchr(const char *,int);
 #endif
-extern char * __must_check skip_spaces(const char *) __nocapture(1);
+extern char * __must_check skip_spaces(const char *);
 
 extern char *strim(char *);
 
@@ -72,10 +72,10 @@ static inline __must_check char *strstrip(char *str)
 }
 
 #ifndef __HAVE_ARCH_STRSTR
-extern char * strstr(const char *, const char *) __nocapture(1, 2);
+extern char * strstr(const char *, const char *);
 #endif
 #ifndef __HAVE_ARCH_STRNSTR
-extern char * strnstr(const char *, const char *, size_t) __nocapture(1, 2);
+extern char * strnstr(const char *, const char *, size_t);
 #endif
 #ifndef __HAVE_ARCH_STRLEN
 extern __kernel_size_t strlen(const char *);
@@ -84,51 +84,51 @@ extern __kernel_size_t strlen(const char *);
 extern __kernel_size_t strnlen(const char *,__kernel_size_t);
 #endif
 #ifndef __HAVE_ARCH_STRPBRK
-extern char * strpbrk(const char *,const char *) __nocapture(1, 2);
+extern char * strpbrk(const char *,const char *);
 #endif
 #ifndef __HAVE_ARCH_STRSEP
-extern char * strsep(char **,const char *) __nocapture(2);
+extern char * strsep(char **,const char *);
 #endif
 #ifndef __HAVE_ARCH_STRSPN
-extern __kernel_size_t strspn(const char *,const char *) __nocapture(1, 2);
+extern __kernel_size_t strspn(const char *,const char *);
 #endif
 #ifndef __HAVE_ARCH_STRCSPN
-extern __kernel_size_t strcspn(const char *,const char *) __nocapture(1, 2);
+extern __kernel_size_t strcspn(const char *,const char *);
 #endif
 
 #ifndef __HAVE_ARCH_MEMSET
 extern void * memset(void *,int,__kernel_size_t);
 #endif
 #ifndef __HAVE_ARCH_MEMCPY
-extern void * memcpy(void *,const void *,__kernel_size_t) __nocapture(2);
+extern void * memcpy(void *,const void *,__kernel_size_t);
 #endif
 #ifndef __HAVE_ARCH_MEMMOVE
-extern void * memmove(void *,const void *,__kernel_size_t) __nocapture(2);
+extern void * memmove(void *,const void *,__kernel_size_t);
 #endif
 #ifndef __HAVE_ARCH_MEMSCAN
 extern void * memscan(void *,int,__kernel_size_t);
 #endif
 #ifndef __HAVE_ARCH_MEMCMP
-extern int memcmp(const void *,const void *,__kernel_size_t) __nocapture(1, 2);
+extern int memcmp(const void *,const void *,__kernel_size_t);
 #endif
 #ifndef __HAVE_ARCH_MEMCHR
-extern void * memchr(const void *,int,__kernel_size_t) __nocapture(1);
+extern void * memchr(const void *,int,__kernel_size_t);
 #endif
-void *memchr_inv(const void *s, int c, size_t n) __nocapture(1);
+void *memchr_inv(const void *s, int c, size_t n);
 char *strreplace(char *s, char old, char new);
 
 extern void kfree_const(const void *x);
 
-extern char *kstrdup(const char *s, gfp_t gfp) __nocapture(1);
-extern const char *kstrdup_const(const char *s, gfp_t gfp) __nocapture(1);
-extern char *kstrndup(const char *s, size_t len, gfp_t gfp) __nocapture(1);
-extern void *kmemdup(const void *src, size_t len, gfp_t gfp) __nocapture(1);
+extern char *kstrdup(const char *s, gfp_t gfp) __malloc;
+extern const char *kstrdup_const(const char *s, gfp_t gfp);
+extern char *kstrndup(const char *s, size_t len, gfp_t gfp);
+extern void *kmemdup(const void *src, size_t len, gfp_t gfp);
 
 extern char **argv_split(gfp_t gfp, const char *str, int *argcp);
 extern void argv_free(char **argv);
 
-extern bool sysfs_streq(const char *s1, const char *s2) __nocapture(1, 2);
-extern int kstrtobool(const char *s, bool *res) __nocapture(1);
+extern bool sysfs_streq(const char *s1, const char *s2);
+extern int kstrtobool(const char *s, bool *res);
 static inline int strtobool(const char *s, bool *res)
 {
 	return kstrtobool(s, res);
@@ -137,8 +137,8 @@ static inline int strtobool(const char *s, bool *res)
 int match_string(const char * const *array, size_t n, const char *string);
 
 #ifdef CONFIG_BINARY_PRINTF
-int vbin_printf(u32 *bin_buf, size_t size, const char *fmt, va_list args) __nocapture(3);
-int bstr_printf(char *buf, size_t size, const char *fmt, const u32 *bin_buf) __nocapture(3);
+int vbin_printf(u32 *bin_buf, size_t size, const char *fmt, va_list args);
+int bstr_printf(char *buf, size_t size, const char *fmt, const u32 *bin_buf);
 int bprintf(u32 *bin_buf, size_t size, const char *fmt, ...) __printf(3, 4);
 #endif
 

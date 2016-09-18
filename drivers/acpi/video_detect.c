@@ -41,6 +41,7 @@ ACPI_MODULE_NAME("video");
 void acpi_video_unregister_backlight(void);
 
 static bool backlight_notifier_registered;
+static struct notifier_block backlight_nb;
 static struct work_struct backlight_notify_work;
 
 static enum acpi_backlight_type acpi_backlight_cmdline = acpi_backlight_undef;
@@ -310,10 +311,6 @@ static int acpi_video_backlight_notify(struct notifier_block *nb,
 	return NOTIFY_OK;
 }
 
-static struct notifier_block backlight_nb = {
-	.notifier_call = acpi_video_backlight_notify,
-};
-
 /*
  * Determine which type of backlight interface to use on this system,
  * First check cmdline, then dmi quirks, then do autodetect.
@@ -344,6 +341,8 @@ enum acpi_backlight_type acpi_video_get_backlight_type(void)
 				    &video_caps, NULL);
 		INIT_WORK(&backlight_notify_work,
 			  acpi_video_backlight_notify_work);
+		backlight_nb.notifier_call = acpi_video_backlight_notify;
+		backlight_nb.priority = 0;
 		if (backlight_register_notifier(&backlight_nb) == 0)
 			backlight_notifier_registered = true;
 		init_done = true;
@@ -359,7 +358,7 @@ enum acpi_backlight_type acpi_video_get_backlight_type(void)
 	if (!(video_caps & ACPI_VIDEO_BACKLIGHT))
 		return acpi_backlight_vendor;
 
-	if (acpi_osi_is_win8() && backlight_device_registered(BACKLIGHT_RAW))
+	if (acpi_osi_is_win8() && backlight_device_get_by_type(BACKLIGHT_RAW))
 		return acpi_backlight_native;
 
 	return acpi_backlight_video;

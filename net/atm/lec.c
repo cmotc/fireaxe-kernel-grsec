@@ -111,9 +111,9 @@ static inline void lec_arp_put(struct lec_arp_table *entry)
 }
 
 static struct lane2_ops lane2_ops = {
-	.resolve = lane2_resolve,
-	.associate_req = lane2_associate_req,
-	.associate_indicator = NULL
+	lane2_resolve,		/* resolve,             spec 3.1.3 */
+	lane2_associate_req,	/* associate_req,       spec 3.1.4 */
+	NULL			/* associate indicator, spec 3.1.5 */
 };
 
 static unsigned char bus_mac[ETH_ALEN] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
@@ -194,7 +194,7 @@ lec_send(struct atm_vcc *vcc, struct sk_buff *skb)
 static void lec_tx_timeout(struct net_device *dev)
 {
 	pr_info("%s\n", dev->name);
-	dev->trans_start = jiffies;
+	netif_trans_update(dev);
 	netif_wake_queue(dev);
 }
 
@@ -324,7 +324,7 @@ static netdev_tx_t lec_start_xmit(struct sk_buff *skb,
 out:
 	if (entry)
 		lec_arp_put(entry);
-	dev->trans_start = jiffies;
+	netif_trans_update(dev);
 	return NETDEV_TX_OK;
 }
 

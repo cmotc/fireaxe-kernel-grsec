@@ -6,7 +6,6 @@
 #include <linux/sched.h>
 #include <linux/kernel.h>
 #include <linux/capability.h>
-#include <linux/security.h>
 #include <linux/errno.h>
 #include <linux/types.h>
 #include <linux/ioport.h>
@@ -31,12 +30,6 @@ asmlinkage long sys_ioperm(unsigned long from, unsigned long num, int turn_on)
 		return -EINVAL;
 	if (turn_on && !capable(CAP_SYS_RAWIO))
 		return -EPERM;
-#ifdef CONFIG_GRKERNSEC_IO
-	if (turn_on && grsec_disable_privio) {
-		gr_handle_ioperm();
-		return -ENODEV;
-	}
-#endif
 
 	/*
 	 * If it's the first ioperm() call in this thread's lifetime, set the
@@ -61,7 +54,7 @@ asmlinkage long sys_ioperm(unsigned long from, unsigned long num, int turn_on)
 	 * because the ->io_bitmap_max value must match the bitmap
 	 * contents:
 	 */
-	tss = cpu_tss + get_cpu();
+	tss = &per_cpu(cpu_tss, get_cpu());
 
 	if (turn_on)
 		bitmap_clear(t->io_bitmap_ptr, from, num);
@@ -117,12 +110,6 @@ SYSCALL_DEFINE1(iopl, unsigned int, level)
 	if (level > old) {
 		if (!capable(CAP_SYS_RAWIO))
 			return -EPERM;
-#ifdef CONFIG_GRKERNSEC_IO
-		if (grsec_disable_privio) {
-			gr_handle_iopl();
-			return -ENODEV;
-		}
-#endif
 	}
 	regs->flags = (regs->flags & ~X86_EFLAGS_IOPL) |
 		(level << X86_EFLAGS_IOPL_BIT);

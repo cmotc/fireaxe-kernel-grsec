@@ -346,7 +346,7 @@ struct nfs_readdesc {
 };
 
 static int
-readpage_async_filler(struct file *data, struct page *page)
+readpage_async_filler(void *data, struct page *page)
 {
 	struct nfs_readdesc *desc = (struct nfs_readdesc *)data;
 	struct nfs_page *new;
@@ -367,13 +367,13 @@ readpage_async_filler(struct file *data, struct page *page)
 		nfs_list_remove_request(new);
 		nfs_readpage_release(new);
 		error = desc->pgio->pg_error;
-		goto out_unlock;
+		goto out;
 	}
 	return 0;
 out_error:
 	error = PTR_ERR(new);
-out_unlock:
 	unlock_page(page);
+out:
 	return error;
 }
 

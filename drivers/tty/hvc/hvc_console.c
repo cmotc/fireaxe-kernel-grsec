@@ -343,7 +343,7 @@ static int hvc_open(struct tty_struct *tty, struct file * filp)
 
 	spin_lock_irqsave(&hp->port.lock, flags);
 	/* Check and then increment for fast path open. */
-	if (atomic_inc_return(&hp->port.count) > 1) {
+	if (hp->port.count++ > 0) {
 		spin_unlock_irqrestore(&hp->port.lock, flags);
 		hvc_kick();
 		return 0;
@@ -398,7 +398,7 @@ static void hvc_close(struct tty_struct *tty, struct file * filp)
 
 	spin_lock_irqsave(&hp->port.lock, flags);
 
-	if (atomic_dec_return(&hp->port.count) == 0) {
+	if (--hp->port.count == 0) {
 		spin_unlock_irqrestore(&hp->port.lock, flags);
 		/* We are done with the tty pointer now. */
 		tty_port_tty_set(&hp->port, NULL);
@@ -420,9 +420,9 @@ static void hvc_close(struct tty_struct *tty, struct file * filp)
 		 */
 		tty_wait_until_sent(tty, HVC_CLOSE_WAIT);
 	} else {
-		if (atomic_read(&hp->port.count) < 0)
+		if (hp->port.count < 0)
 			printk(KERN_ERR "hvc_close %X: oops, count is %d\n",
-				hp->vtermno, atomic_read(&hp->port.count));
+				hp->vtermno, hp->port.count);
 		spin_unlock_irqrestore(&hp->port.lock, flags);
 	}
 }
@@ -452,12 +452,12 @@ static void hvc_hangup(struct tty_struct *tty)
 	 * open->hangup case this can be called after the final close so prevent
 	 * that from happening for now.
 	 */
-	if (atomic_read(&hp->port.count) <= 0) {
+	if (hp->port.count <= 0) {
 		spin_unlock_irqrestore(&hp->port.lock, flags);
 		return;
 	}
 
-	atomic_set(&hp->port.count, 0);
+	hp->port.count = 0;
 	spin_unlock_irqrestore(&hp->port.lock, flags);
 	tty_port_tty_set(&hp->port, NULL);
 
@@ -505,7 +505,7 @@ static int hvc_write(struct tty_struct *tty, const unsigned char *buf, int count
 		return -EPIPE;
 
 	/* FIXME what's this (unprotected) check for? */
-	if (atomic_read(&hp->port.count) <= 0)
+	if (hp->port.count <= 0)
 		return -EIO;
 
 	spin_lock_irqsave(&hp->lock, flags);
@@ -632,7 +632,7 @@ int hvc_poll(struct hvc_struct *hp)
 		goto bail;
 
 	/* Now check if we can get data (are we throttled ?) */
-	if (test_bit(TTY_THROTTLED, &tty->flags))
+	if (tty_throttled(tty))
 		goto throttled;
 
 	/* If we aren't notifier driven and aren't throttled, we always
@@ -814,7 +814,7 @@ static int hvc_poll_get_char(struct tty_driver *driver, int line)
 
 	n = hp->ops->get_chars(hp->vtermno, &ch, 1);
 
-	if (n == 0)
+	if (n <= 0)
 		return NO_POLL_CHAR;
 
 	return ch;

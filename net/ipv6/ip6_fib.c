@@ -98,9 +98,9 @@ static int fib6_new_sernum(struct net *net)
 	int new, old;
 
 	do {
-		old = atomic_read_unchecked(&net->ipv6.fib6_sernum);
+		old = atomic_read(&net->ipv6.fib6_sernum);
 		new = old < INT_MAX ? old + 1 : 1;
-	} while (atomic_cmpxchg_unchecked(&net->ipv6.fib6_sernum,
+	} while (atomic_cmpxchg(&net->ipv6.fib6_sernum,
 				old, new) != old);
 	return new;
 }
@@ -177,6 +177,7 @@ static void rt6_free_pcpu(struct rt6_info *non_pcpu_rt)
 		}
 	}
 
+	free_percpu(non_pcpu_rt->rt6i_pcpu);
 	non_pcpu_rt->rt6i_pcpu = NULL;
 }
 
@@ -240,6 +241,7 @@ struct fib6_table *fib6_new_table(struct net *net, u32 id)
 
 	return tb;
 }
+EXPORT_SYMBOL_GPL(fib6_new_table);
 
 struct fib6_table *fib6_get_table(struct net *net, u32 id)
 {

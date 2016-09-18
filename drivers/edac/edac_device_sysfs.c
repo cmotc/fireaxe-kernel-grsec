@@ -749,7 +749,7 @@ static int edac_device_add_main_sysfs_attributes(
 		 */
 		while (sysfs_attrib->attr.name != NULL) {
 			err = sysfs_create_file(&edac_dev->kobj,
-				&sysfs_attrib->attr);
+				(struct attribute*) sysfs_attrib);
 			if (err)
 				goto err_out;
 

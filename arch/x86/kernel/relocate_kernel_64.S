@@ -96,7 +96,8 @@ relocate_kernel:
 
 	/* jump to identity mapped page */
 	addq	$(identity_mapped - relocate_kernel), %r8
-	jmp	*%r8
+	pushq	%r8
+	ret
 
 identity_mapped:
 	/* set return address to 0 if not preserving context */

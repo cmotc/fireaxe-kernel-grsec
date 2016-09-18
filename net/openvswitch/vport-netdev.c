@@ -204,16 +204,11 @@ struct vport *ovs_netdev_get_vport(struct net_device *dev)
 		return NULL;
 }
 
-static netdev_tx_t netdev_send(struct sk_buff *skb)
-{
-	return dev_queue_xmit(skb);
-}
-
 static struct vport_ops ovs_netdev_vport_ops = {
 	.type		= OVS_VPORT_TYPE_NETDEV,
 	.create		= netdev_create,
 	.destroy	= netdev_destroy,
-	.send		= netdev_send,
+	.send		= dev_queue_xmit,
 };
 
 int __init ovs_netdev_init(void)

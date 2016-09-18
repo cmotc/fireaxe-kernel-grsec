@@ -63,14 +63,10 @@ static void no_printf(unsigned char *format, ...)
    ------------------------------------------------------------------------- */
 #include "debuglib.c"
 
-static void IDI_CALL_LINK_T no_request(ENTITY IDI_CALL_ENTITY_T *i)
-{
-}
-
 static DESCRIPTOR  MAdapter =  {IDI_DIMAINT, /* Adapter Type */
 				0x00,     /* Channels */
 				0x0000,    /* Features */
-				no_request};
+				(IDI_CALL)no_printf};
 /* --------------------------------------------------------------------------
    DAdapter. Only IDI clients with buffer, that is huge enough to
    get all descriptors will receive information about DAdapter
@@ -104,11 +100,6 @@ void diva_didd_load_time_init(void) {
 void diva_didd_load_time_finit(void) {
 	diva_os_destroy_spin_lock(&didd_spin, "didd");
 }
-
-static void diva_didd_no_request(ENTITY *e)
-{
-}
-
 /* --------------------------------------------------------------------------
    Called in order to register new adapter in adapter array
    return adapter handle (> 0) on success
@@ -120,12 +111,13 @@ static int diva_didd_add_descriptor(DESCRIPTOR *d) {
 	if (d->type == IDI_DIMAINT) {
 		if (d->request) {
 			MAdapter.request = d->request;
+			dprintf = (DIVA_DI_PRINTF)d->request;
 			diva_notify_adapter_change(&MAdapter, 0); /* Inserted */
 			DBG_TRC(("DIMAINT registered, dprintf=%08x", d->request))
 				} else {
 			DBG_TRC(("DIMAINT removed"))
 				diva_notify_adapter_change(&MAdapter, 1); /* About to remove */
-			MAdapter.request = diva_didd_no_request;
+			MAdapter.request = (IDI_CALL)no_printf;
 			dprintf = no_printf;
 		}
 		return (NEW_MAX_DESCRIPTORS);
@@ -157,7 +149,7 @@ static int diva_didd_remove_descriptor(IDI_CALL request) {
 		DBG_TRC(("DIMAINT removed"))
 			dprintf = no_printf;
 		diva_notify_adapter_change(&MAdapter, 1); /* About to remove */
-		MAdapter.request = diva_didd_no_request;
+		MAdapter.request = (IDI_CALL)no_printf;
 		return (0);
 	}
 	for (i = 0; (Adapters && (i < NEW_MAX_DESCRIPTORS)); i++) {
@@ -230,7 +222,7 @@ static void IDI_CALL_LINK_T diva_dadapter_request(	\
 	case IDI_SYNC_REQ_DIDD_REGISTER_ADAPTER_NOTIFY: {
 		diva_didd_adapter_notify_t *pinfo = &syncReq->didd_notify.info;
 		pinfo->handle = diva_register_adapter_callback(		\
-			pinfo->callback,
+			(didd_adapter_change_callback_t)pinfo->callback,
 			(void IDI_CALL_ENTITY_T *)pinfo->context);
 		e->Rc = 0xff;
 	} break;

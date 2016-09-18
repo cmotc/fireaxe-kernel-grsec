@@ -401,7 +401,7 @@ static int cmos_alarm_irq_enable(struct device *dev, unsigned int enabled)
 	return 0;
 }
 
-#if defined(CONFIG_RTC_INTF_PROC) || defined(CONFIG_RTC_INTF_PROC_MODULE)
+#if IS_ENABLED(CONFIG_RTC_INTF_PROC)
 
 static int cmos_procfs(struct device *dev, struct seq_file *seq)
 {
@@ -735,9 +735,7 @@ cmos_do_probe(struct device *dev, struct resource *ports, int rtc_irq)
 	hpet_rtc_timer_init();
 
 	/* export at least the first block of NVRAM */
-	pax_open_kernel();
-	const_cast(nvram.size) = address_space - NVRAM_OFFSET;
-	pax_close_kernel();
+	nvram.size = address_space - NVRAM_OFFSET;
 	retval = sysfs_create_bin_file(&dev->kobj, &nvram);
 	if (retval < 0) {
 		dev_dbg(dev, "can't create nvram file? %d\n", retval);

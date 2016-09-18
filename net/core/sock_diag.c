@@ -14,7 +14,7 @@
 #include <linux/inet_diag.h>
 #include <linux/sock_diag.h>
 
-static const struct sock_diag_handler *sock_diag_handlers[AF_MAX] __read_only;
+static const struct sock_diag_handler *sock_diag_handlers[AF_MAX];
 static int (*inet_rcv_compat)(struct sk_buff *skb, struct nlmsghdr *nlh);
 static DEFINE_MUTEX(sock_diag_table_mutex);
 static struct workqueue_struct *broadcast_wq;
@@ -22,12 +22,12 @@ static struct workqueue_struct *broadcast_wq;
 static u64 sock_gen_cookie(struct sock *sk)
 {
 	while (1) {
-		u64 res = atomic64_read_unchecked(&sk->sk_cookie);
+		u64 res = atomic64_read(&sk->sk_cookie);
 
 		if (res)
 			return res;
-		res = atomic64_inc_return_unchecked(&sock_net(sk)->cookie_gen);
-		atomic64_cmpxchg_unchecked(&sk->sk_cookie, 0, res);
+		res = atomic64_inc_return(&sock_net(sk)->cookie_gen);
+		atomic64_cmpxchg(&sk->sk_cookie, 0, res);
 	}
 }
 
@@ -67,6 +67,7 @@ int sock_diag_put_meminfo(struct sock *sk, struct sk_buff *skb, int attrtype)
 	mem[SK_MEMINFO_WMEM_QUEUED] = sk->sk_wmem_queued;
 	mem[SK_MEMINFO_OPTMEM] = atomic_read(&sk->sk_omem_alloc);
 	mem[SK_MEMINFO_BACKLOG] = sk->sk_backlog.len;
+	mem[SK_MEMINFO_DROPS] = atomic_read(&sk->sk_drops);
 
 	return nla_put(skb, attrtype, sizeof(mem), &mem);
 }
@@ -119,7 +120,7 @@ static size_t sock_diag_nlmsg_size(void)
 {
 	return NLMSG_ALIGN(sizeof(struct inet_diag_msg)
 	       + nla_total_size(sizeof(u8)) /* INET_DIAG_PROTOCOL */
-	       + nla_total_size(sizeof(struct tcp_info))); /* INET_DIAG_INFO */
+	       + nla_total_size_64bit(sizeof(struct tcp_info))); /* INET_DIAG_INFO */
 }
 
 static void sock_diag_broadcast_destroy_work(struct work_struct *work)
@@ -192,11 +193,8 @@ int sock_diag_register(const struct sock_diag_handler *hndl)
 	mutex_lock(&sock_diag_table_mutex);
 	if (sock_diag_handlers[hndl->family])
 		err = -EBUSY;
-	else {
-		pax_open_kernel();
+	else
 		sock_diag_handlers[hndl->family] = hndl;
-		pax_close_kernel();
-	}
 	mutex_unlock(&sock_diag_table_mutex);
 
 	return err;
@@ -212,9 +210,7 @@ void sock_diag_unregister(const struct sock_diag_handler *hnld)
 
 	mutex_lock(&sock_diag_table_mutex);
 	BUG_ON(sock_diag_handlers[family] != hnld);
-	pax_open_kernel();
 	sock_diag_handlers[family] = NULL;
-	pax_close_kernel();
 	mutex_unlock(&sock_diag_table_mutex);
 }
 EXPORT_SYMBOL_GPL(sock_diag_unregister);

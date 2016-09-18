@@ -70,6 +70,22 @@ static pmd_t *alloc_new_pmd(struct mm_struct *mm, struct vm_area_struct *vma,
 	return pmd;
 }
 
+static void take_rmap_locks(struct vm_area_struct *vma)
+{
+	if (vma->vm_file)
+		i_mmap_lock_write(vma->vm_file->f_mapping);
+	if (vma->anon_vma)
+		anon_vma_lock_write(vma->anon_vma);
+}
+
+static void drop_rmap_locks(struct vm_area_struct *vma)
+{
+	if (vma->anon_vma)
+		anon_vma_unlock_write(vma->anon_vma);
+	if (vma->vm_file)
+		i_mmap_unlock_write(vma->vm_file->f_mapping);
+}
+
 static pte_t move_soft_dirty_pte(pte_t pte)
 {
 	/*
@@ -90,8 +106,6 @@ static void move_ptes(struct vm_area_struct *vma, pmd_t *old_pmd,
 		struct vm_area_struct *new_vma, pmd_t *new_pmd,
 		unsigned long new_addr, bool need_rmap_locks)
 {
-	struct address_space *mapping = NULL;
-	struct anon_vma *anon_vma = NULL;
 	struct mm_struct *mm = vma->vm_mm;
 	pte_t *old_pte, *new_pte, pte;
 	spinlock_t *old_ptl, *new_ptl;
@@ -114,16 +128,8 @@ static void move_ptes(struct vm_area_struct *vma, pmd_t *old_pmd,
 	 *   serialize access to individual ptes, but only rmap traversal
 	 *   order guarantees that we won't miss both the old and new ptes).
 	 */
-	if (need_rmap_locks) {
-		if (vma->vm_file) {
-			mapping = vma->vm_file->f_mapping;
-			i_mmap_lock_write(mapping);
-		}
-		if (vma->anon_vma) {
-			anon_vma = vma->anon_vma;
-			anon_vma_lock_write(anon_vma);
-		}
-	}
+	if (need_rmap_locks)
+		take_rmap_locks(vma);
 
 	/*
 	 * We don't have to worry about the ordering of src and dst
@@ -142,12 +148,6 @@ static void move_ptes(struct vm_area_struct *vma, pmd_t *old_pmd,
 			continue;
 		pte = ptep_get_and_clear(mm, old_addr, old_pte);
 		pte = move_pte(pte, new_vma->vm_page_prot, old_addr, new_addr);
-
-#ifdef CONFIG_ARCH_TRACK_EXEC_LIMIT
-		if (!(__supported_pte_mask & _PAGE_NX) && pte_present(pte) && (new_vma->vm_flags & (VM_PAGEEXEC | VM_EXEC)) == VM_PAGEEXEC)
-			pte = pte_exprotect(pte);
-#endif
-
 		pte = move_soft_dirty_pte(pte);
 		set_pte_at(mm, new_addr, new_pte, pte);
 	}
@@ -157,10 +157,8 @@ static void move_ptes(struct vm_area_struct *vma, pmd_t *old_pmd,
 		spin_unlock(new_ptl);
 	pte_unmap(new_pte - 1);
 	pte_unmap_unlock(old_pte - 1, old_ptl);
-	if (anon_vma)
-		anon_vma_unlock_write(anon_vma);
-	if (mapping)
-		i_mmap_unlock_write(mapping);
+	if (need_rmap_locks)
+		drop_rmap_locks(vma);
 }
 
 #define LATENCY_LIMIT	(64 * PAGE_SIZE)
@@ -199,16 +197,13 @@ unsigned long move_page_tables(struct vm_area_struct *vma,
 		if (pmd_trans_huge(*old_pmd)) {
 			if (extent == HPAGE_PMD_SIZE) {
 				bool moved;
-				VM_BUG_ON_VMA(vma->vm_file || !vma->anon_vma,
-					      vma);
 				/* See comment in move_ptes() */
 				if (need_rmap_locks)
-					anon_vma_lock_write(vma->anon_vma);
-				moved = move_huge_pmd(vma, new_vma, old_addr,
-						    new_addr, old_end,
-						    old_pmd, new_pmd);
+					take_rmap_locks(vma);
+				moved = move_huge_pmd(vma, old_addr, new_addr,
+						    old_end, old_pmd, new_pmd);
 				if (need_rmap_locks)
-					anon_vma_unlock_write(vma->anon_vma);
+					drop_rmap_locks(vma);
 				if (moved) {
 					need_flush = true;
 					continue;
@@ -363,11 +358,6 @@ static struct vm_area_struct *vma_to_resize(unsigned long addr,
 	if (is_vm_hugetlb_page(vma))
 		return ERR_PTR(-EINVAL);
 
-#ifdef CONFIG_PAX_SEGMEXEC
-	if (pax_find_mirror_vma(vma))
-		return ERR_PTR(-EINVAL);
-#endif
-
 	/* We can't remap across vm area boundaries */
 	if (old_len > vma->vm_end - addr)
 		return ERR_PTR(-EFAULT);
@@ -415,19 +405,11 @@ static unsigned long mremap_to(unsigned long addr, unsigned long old_len,
 	unsigned long ret = -EINVAL;
 	unsigned long charged = 0;
 	unsigned long map_flags;
-	unsigned long pax_task_size = TASK_SIZE;
 
 	if (offset_in_page(new_addr))
 		goto out;
 
-#ifdef CONFIG_PAX_SEGMEXEC
-	if (mm->pax_flags & MF_PAX_SEGMEXEC)
-		pax_task_size = SEGMEXEC_TASK_SIZE;
-#endif
-
-	pax_task_size -= PAGE_SIZE;
-
-	if (new_len > TASK_SIZE || new_addr > pax_task_size - new_len)
+	if (new_len > TASK_SIZE || new_addr > TASK_SIZE - new_len)
 		goto out;
 
 	/* Ensure the old/new locations do not overlap */
@@ -500,7 +482,6 @@ SYSCALL_DEFINE5(mremap, unsigned long, addr, unsigned long, old_len,
 	unsigned long ret = -EINVAL;
 	unsigned long charged = 0;
 	bool locked = false;
-	unsigned long pax_task_size = TASK_SIZE;
 
 	if (flags & ~(MREMAP_FIXED | MREMAP_MAYMOVE))
 		return ret;
@@ -522,18 +503,8 @@ SYSCALL_DEFINE5(mremap, unsigned long, addr, unsigned long, old_len,
 	if (!new_len)
 		return ret;
 
-#ifdef CONFIG_PAX_SEGMEXEC
-	if (mm->pax_flags & MF_PAX_SEGMEXEC)
-		pax_task_size = SEGMEXEC_TASK_SIZE;
-#endif
-
-	pax_task_size -= PAGE_SIZE;
-
-	if (new_len > pax_task_size || addr > pax_task_size-new_len ||
-	    old_len > pax_task_size || addr > pax_task_size-old_len)
-		return ret;
-
-	down_write(&current->mm->mmap_sem);
+	if (down_write_killable(&current->mm->mmap_sem))
+		return -EINTR;
 
 	if (flags & MREMAP_FIXED) {
 		ret = mremap_to(addr, old_len, new_addr, new_len,
@@ -583,7 +554,6 @@ SYSCALL_DEFINE5(mremap, unsigned long, addr, unsigned long, old_len,
 				new_addr = addr;
 			}
 			ret = addr;
-			track_exec_limit(vma->vm_mm, vma->vm_start, addr + new_len, vma->vm_flags);
 			goto out;
 		}
 	}
@@ -607,12 +577,7 @@ SYSCALL_DEFINE5(mremap, unsigned long, addr, unsigned long, old_len,
 			goto out;
 		}
 
-		map_flags = vma->vm_flags;
 		ret = move_vma(vma, addr, old_len, new_len, new_addr, &locked);
-		if (!(ret & ~PAGE_MASK)) {
-			track_exec_limit(current->mm, addr, addr + old_len, 0UL);
-			track_exec_limit(current->mm, new_addr, new_addr + new_len, map_flags);
-		}
 	}
 out:
 	if (offset_in_page(ret)) {

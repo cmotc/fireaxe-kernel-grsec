@@ -7,7 +7,7 @@
 #include <linux/linkage.h>
 #include <asm/ptrace.h>
 #include <asm/ftrace.h>
-#include <asm/alternative-asm.h>
+
 
 	.code64
 	.section .entry.text, "ax"
@@ -148,9 +148,8 @@
 #ifdef CONFIG_DYNAMIC_FTRACE
 
 ENTRY(function_hook)
-	pax_force_retaddr
 	retq
-ENDPROC(function_hook)
+END(function_hook)
 
 ENTRY(ftrace_caller)
 	/* save_mcount_regs fills in first two parameters */
@@ -183,10 +182,10 @@ GLOBAL(ftrace_graph_call)
 	jmp ftrace_stub
 #endif
 
-RAP_ENTRY(ftrace_stub)
-	pax_force_retaddr
+/* This is weak to keep gas from relaxing the jumps */
+WEAK(ftrace_stub)
 	retq
-ENDPROC(ftrace_caller)
+END(ftrace_caller)
 
 ENTRY(ftrace_regs_caller)
 	/* Save the current flags before any operations that can change them */
@@ -257,7 +256,7 @@ GLOBAL(ftrace_regs_caller_end)
 
 	jmp ftrace_epilogue
 
-ENDPROC(ftrace_regs_caller)
+END(ftrace_regs_caller)
 
 
 #else /* ! CONFIG_DYNAMIC_FTRACE */
@@ -276,7 +275,6 @@ fgraph_trace:
 #endif
 
 GLOBAL(ftrace_stub)
-	pax_force_retaddr
 	retq
 
 trace:
@@ -289,13 +287,12 @@ trace:
 	 * ip and parent ip are used and the list function is called when
 	 * function tracing is enabled.
 	 */
-	pax_force_fptr ftrace_trace_function
 	call   *ftrace_trace_function
 
 	restore_mcount_regs
 
 	jmp fgraph_trace
-ENDPROC(function_hook)
+END(function_hook)
 #endif /* CONFIG_DYNAMIC_FTRACE */
 #endif /* CONFIG_FUNCTION_TRACER */
 
@@ -317,9 +314,8 @@ ENTRY(ftrace_graph_caller)
 
 	restore_mcount_regs
 
-	pax_force_retaddr
 	retq
-ENDPROC(ftrace_graph_caller)
+END(ftrace_graph_caller)
 
 GLOBAL(return_to_handler)
 	subq  $24, %rsp
@@ -335,7 +331,5 @@ GLOBAL(return_to_handler)
 	movq 8(%rsp), %rdx
 	movq (%rsp), %rax
 	addq $24, %rsp
-	pax_force_fptr %rdi
 	jmp *%rdi
-ENDPROC(return_to_handler)
 #endif

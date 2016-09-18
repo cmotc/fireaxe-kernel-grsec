@@ -680,7 +680,7 @@ long do_msgsnd(int msqid, long mtype, void __user *mtext,
 		rcu_read_lock();
 		ipc_lock_object(&msq->q_perm);
 
-		ipc_rcu_putref(msq, ipc_rcu_free);
+		ipc_rcu_putref(msq, msg_rcu_free);
 		/* raced with RMID? */
 		if (!ipc_valid_object(&msq->q_perm)) {
 			err = -EIDRM;
@@ -1041,8 +1041,7 @@ void msg_exit_ns(struct ipc_namespace *ns)
 static int sysvipc_msg_proc_show(struct seq_file *s, void *it)
 {
 	struct user_namespace *user_ns = seq_user_ns(s);
-	struct kern_ipc_perm *perm = it;
-	struct msg_queue *msq = container_of(perm, struct msg_queue, q_perm);
+	struct msg_queue *msq = it;
 
 	seq_printf(s,
 		   "%10d %10d  %4o  %10lu %10lu %5u %5u %5u %5u %5u %5u %10lu %10lu %10lu\n",

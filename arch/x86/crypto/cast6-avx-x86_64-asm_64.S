@@ -25,7 +25,6 @@
 
 #include <linux/linkage.h>
 #include <asm/frame.h>
-#include <asm/alternative-asm.h>
 #include "glue_helper-asm-avx.S"
 
 .file "cast6-avx-x86_64-asm_64.S"
@@ -297,7 +296,6 @@ __cast6_enc_blk8:
 	outunpack_blocks(RA1, RB1, RC1, RD1, RTMP, RX, RKRF, RKM);
 	outunpack_blocks(RA2, RB2, RC2, RD2, RTMP, RX, RKRF, RKM);
 
-	pax_force_retaddr
 	ret;
 ENDPROC(__cast6_enc_blk8)
 
@@ -343,11 +341,10 @@ __cast6_dec_blk8:
 	outunpack_blocks(RA1, RB1, RC1, RD1, RTMP, RX, RKRF, RKM);
 	outunpack_blocks(RA2, RB2, RC2, RD2, RTMP, RX, RKRF, RKM);
 
-	pax_force_retaddr
 	ret;
 ENDPROC(__cast6_dec_blk8)
 
-RAP_ENTRY(cast6_ecb_enc_8way)
+ENTRY(cast6_ecb_enc_8way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst
@@ -364,11 +361,10 @@ RAP_ENTRY(cast6_ecb_enc_8way)
 	store_8way(%r11, RA1, RB1, RC1, RD1, RA2, RB2, RC2, RD2);
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 ENDPROC(cast6_ecb_enc_8way)
 
-RAP_ENTRY(cast6_ecb_dec_8way)
+ENTRY(cast6_ecb_dec_8way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst
@@ -385,11 +381,10 @@ RAP_ENTRY(cast6_ecb_dec_8way)
 	store_8way(%r11, RA1, RB1, RC1, RD1, RA2, RB2, RC2, RD2);
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 ENDPROC(cast6_ecb_dec_8way)
 
-RAP_ENTRY(cast6_cbc_dec_8way)
+ENTRY(cast6_cbc_dec_8way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst
@@ -397,25 +392,24 @@ RAP_ENTRY(cast6_cbc_dec_8way)
 	 */
 	FRAME_BEGIN
 
-	pushq %r14;
+	pushq %r12;
 
 	movq %rsi, %r11;
-	movq %rdx, %r14;
+	movq %rdx, %r12;
 
 	load_8way(%rdx, RA1, RB1, RC1, RD1, RA2, RB2, RC2, RD2);
 
 	call __cast6_dec_blk8;
 
-	store_cbc_8way(%r14, %r11, RA1, RB1, RC1, RD1, RA2, RB2, RC2, RD2);
+	store_cbc_8way(%r12, %r11, RA1, RB1, RC1, RD1, RA2, RB2, RC2, RD2);
 
-	popq %r14;
+	popq %r12;
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 ENDPROC(cast6_cbc_dec_8way)
 
-RAP_ENTRY(cast6_ctr_8way)
+ENTRY(cast6_ctr_8way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst
@@ -424,26 +418,25 @@ RAP_ENTRY(cast6_ctr_8way)
 	 */
 	FRAME_BEGIN
 
-	pushq %r14;
+	pushq %r12;
 
 	movq %rsi, %r11;
-	movq %rdx, %r14;
+	movq %rdx, %r12;
 
 	load_ctr_8way(%rcx, .Lbswap128_mask, RA1, RB1, RC1, RD1, RA2, RB2, RC2,
 		      RD2, RX, RKR, RKM);
 
 	call __cast6_enc_blk8;
 
-	store_ctr_8way(%r14, %r11, RA1, RB1, RC1, RD1, RA2, RB2, RC2, RD2);
+	store_ctr_8way(%r12, %r11, RA1, RB1, RC1, RD1, RA2, RB2, RC2, RD2);
 
-	popq %r14;
+	popq %r12;
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 ENDPROC(cast6_ctr_8way)
 
-RAP_ENTRY(cast6_xts_enc_8way)
+ENTRY(cast6_xts_enc_8way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst
@@ -464,11 +457,10 @@ RAP_ENTRY(cast6_xts_enc_8way)
 	store_xts_8way(%r11, RA1, RB1, RC1, RD1, RA2, RB2, RC2, RD2);
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 ENDPROC(cast6_xts_enc_8way)
 
-RAP_ENTRY(cast6_xts_dec_8way)
+ENTRY(cast6_xts_dec_8way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst
@@ -489,6 +481,5 @@ RAP_ENTRY(cast6_xts_dec_8way)
 	store_xts_8way(%r11, RA1, RB1, RC1, RD1, RA2, RB2, RC2, RD2);
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 ENDPROC(cast6_xts_dec_8way)

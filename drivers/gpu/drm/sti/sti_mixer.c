@@ -5,6 +5,7 @@
  *          for STMicroelectronics.
  * License terms:  GNU General Public License (GPL), version 2
  */
+#include <linux/seq_file.h>
 
 #include "sti_compositor.h"
 #include "sti_mixer.h"
@@ -179,18 +180,18 @@ static int mixer_dbg_show(struct seq_file *s, void *arg)
 	return 0;
 }
 
-static drm_info_list_no_const mixer0_debugfs_files[] __read_only = {
+static struct drm_info_list mixer0_debugfs_files[] = {
 	{ "mixer_main", mixer_dbg_show, 0, NULL },
 };
 
-static drm_info_list_no_const mixer1_debugfs_files[] __read_only = {
+static struct drm_info_list mixer1_debugfs_files[] = {
 	{ "mixer_aux", mixer_dbg_show, 0, NULL },
 };
 
 static int mixer_debugfs_init(struct sti_mixer *mixer, struct drm_minor *minor)
 {
 	unsigned int i;
-	drm_info_list_no_const *mixer_debugfs_files;
+	struct drm_info_list *mixer_debugfs_files;
 	int nb_files;
 
 	switch (mixer->id) {
@@ -206,10 +207,8 @@ static int mixer_debugfs_init(struct sti_mixer *mixer, struct drm_minor *minor)
 		return -EINVAL;
 	}
 
-	pax_open_kernel();
 	for (i = 0; i < nb_files; i++)
 		mixer_debugfs_files[i].data = mixer;
-	pax_close_kernel();
 
 	return drm_debugfs_create_files(mixer_debugfs_files,
 					nb_files,

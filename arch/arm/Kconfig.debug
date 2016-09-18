@@ -7,7 +7,6 @@ config ARM_PTDUMP
 	depends on DEBUG_KERNEL
 	depends on MMU
 	select DEBUG_FS
-	depends on !GRKERNSEC_KMEM
 	---help---
 	  Say Y here if you want to show the kernel pagetable layout in a
 	  debugfs file. This information is only useful for kernel developers
@@ -268,14 +267,6 @@ choice
 		help
 		  Say Y here if you want kernel low-level debugging support
 		  on HI3620 UART.
-
-	config DEBUG_HI3716_UART
-		bool "Hisilicon Hi3716 Debug UART"
-		depends on ARCH_HI3xxx
-		select DEBUG_UART_PL01X
-		help
-		  Say Y here if you want kernel low-level debugging support
-		  on HI3716 UART.
 
 	config DEBUG_HIGHBANK_UART
 		bool "Kernel low-level debugging messages via Highbank UART"

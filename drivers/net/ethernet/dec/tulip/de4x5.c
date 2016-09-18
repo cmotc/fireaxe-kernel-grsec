@@ -912,7 +912,7 @@ static int     de4x5_init(struct net_device *dev);
 static int     de4x5_sw_reset(struct net_device *dev);
 static int     de4x5_rx(struct net_device *dev);
 static int     de4x5_tx(struct net_device *dev);
-static void    de4x5_ast(unsigned long _dev);
+static void    de4x5_ast(struct net_device *dev);
 static int     de4x5_txur(struct net_device *dev);
 static int     de4x5_rx_ovfc(struct net_device *dev);
 
@@ -1149,7 +1149,7 @@ de4x5_hw_init(struct net_device *dev, u_long iobase, struct device *gendev)
 	lp->gendev = gendev;
 	spin_lock_init(&lp->lock);
 	init_timer(&lp->timer);
-	lp->timer.function = de4x5_ast;
+	lp->timer.function = (void (*)(unsigned long))de4x5_ast;
 	lp->timer.data = (unsigned long)dev;
 	de4x5_parse_params(dev);
 
@@ -1336,7 +1336,7 @@ de4x5_open(struct net_device *dev)
     }
 
     lp->interrupt = UNMASK_INTERRUPTS;
-    dev->trans_start = jiffies; /* prevent tx timeout */
+    netif_trans_update(dev); /* prevent tx timeout */
 
     START_DE4X5;
 
@@ -1465,7 +1465,7 @@ de4x5_queue_pkt(struct sk_buff *skb, struct net_device *dev)
 
     netif_stop_queue(dev);
     if (!lp->tx_enable)                   /* Cannot send for now */
-	return NETDEV_TX_LOCKED;
+		goto tx_err;
 
     /*
     ** Clean out the TX ring asynchronously to interrupts - sometimes the
@@ -1478,7 +1478,7 @@ de4x5_queue_pkt(struct sk_buff *skb, struct net_device *dev)
 
     /* Test if cache is already locked - requeue skb if so */
     if (test_and_set_bit(0, (void *)&lp->cache.lock) && !lp->interrupt)
-	return NETDEV_TX_LOCKED;
+		goto tx_err;
 
     /* Transmit descriptor ring full or stale skb */
     if (netif_queue_stopped(dev) || (u_long) lp->tx_skb[lp->tx_new] > 1) {
@@ -1519,6 +1519,9 @@ de4x5_queue_pkt(struct sk_buff *skb, struct net_device *dev)
     lp->cache.lock = 0;
 
     return NETDEV_TX_OK;
+tx_err:
+	dev_kfree_skb_any(skb);
+	return NETDEV_TX_OK;
 }
 
 /*
@@ -1740,9 +1743,8 @@ de4x5_tx(struct net_device *dev)
 }
 
 static void
-de4x5_ast(unsigned long _dev)
+de4x5_ast(struct net_device *dev)
 {
-	struct net_device *dev = (struct net_device *)_dev;
 	struct de4x5_private *lp = netdev_priv(dev);
 	int next_tick = DE4X5_AUTOSENSE_MS;
 	int dt;
@@ -1933,7 +1935,7 @@ set_multicast_list(struct net_device *dev)
 
 	    lp->tx_new = (lp->tx_new + 1) % lp->txRingSize;
 	    outl(POLL_DEMAND, DE4X5_TPD);       /* Start the TX */
-	    dev->trans_start = jiffies; /* prevent tx timeout */
+	    netif_trans_update(dev); /* prevent tx timeout */
 	}
     }
 }
@@ -2369,7 +2371,7 @@ autoconf_media(struct net_device *dev)
 	lp->media = INIT;
 	lp->tcount = 0;
 
-	de4x5_ast((unsigned long)dev);
+	de4x5_ast(dev);
 
 	return lp->media;
 }
@@ -5374,7 +5376,7 @@ de4x5_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	for (i=0; i<ETH_ALEN; i++) {
 	    tmp.addr[i] = dev->dev_addr[i];
 	}
-	if (ioc->len > sizeof tmp.addr || copy_to_user(ioc->data, tmp.addr, ioc->len)) return -EFAULT;
+	if (copy_to_user(ioc->data, tmp.addr, ioc->len)) return -EFAULT;
 	break;
 
     case DE4X5_SET_HWADDR:           /* Set the hardware address */
@@ -5414,7 +5416,7 @@ de4x5_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	spin_lock_irqsave(&lp->lock, flags);
 	memcpy(&statbuf, &lp->pktStats, ioc->len);
 	spin_unlock_irqrestore(&lp->lock, flags);
-	if (ioc->len > sizeof statbuf || copy_to_user(ioc->data, &statbuf, ioc->len))
+	if (copy_to_user(ioc->data, &statbuf, ioc->len))
 		return -EFAULT;
 	break;
     }

@@ -123,7 +123,7 @@ static void xgene_enet_delete_bufpool(struct xgene_enet_desc_ring *buf_pool)
 	buf_pool->tail = tail;
 }
 
-static irqreturn_t xgene_enet_rx_irq(int irq, void *data)
+static irqreturn_t xgene_enet_rx_irq(const int irq, void *data)
 {
 	struct xgene_enet_desc_ring *rx_ring = data;
 
@@ -588,7 +588,7 @@ static int xgene_enet_process_ring(struct xgene_enet_desc_ring *ring,
 	return processed;
 }
 
-static int xgene_enet_napi(struct napi_struct *napi, int budget)
+static int xgene_enet_napi(struct napi_struct *napi, const int budget)
 {
 	struct xgene_enet_desc_ring *ring;
 	int processed;
@@ -973,6 +973,17 @@ static enum xgene_ring_owner xgene_derive_ring_owner(struct xgene_enet_pdata *p)
 	return owner;
 }
 
+static u8 xgene_start_cpu_bufnum(struct xgene_enet_pdata *pdata)
+{
+	struct device *dev = &pdata->pdev->dev;
+	u32 cpu_bufnum;
+	int ret;
+
+	ret = device_property_read_u32(dev, "channel", &cpu_bufnum);
+
+	return (!ret) ? cpu_bufnum : pdata->cpu_bufnum;
+}
+
 static int xgene_enet_create_desc_rings(struct net_device *ndev)
 {
 	struct xgene_enet_pdata *pdata = netdev_priv(ndev);
@@ -981,12 +992,14 @@ static int xgene_enet_create_desc_rings(struct net_device *ndev)
 	struct xgene_enet_desc_ring *buf_pool = NULL;
 	enum xgene_ring_owner owner;
 	dma_addr_t dma_exp_bufs;
-	u8 cpu_bufnum = pdata->cpu_bufnum;
+	u8 cpu_bufnum;
 	u8 eth_bufnum = pdata->eth_bufnum;
 	u8 bp_bufnum = pdata->bp_bufnum;
 	u16 ring_num = pdata->ring_num;
 	u16 ring_id;
 	int i, ret, size;
+
+	cpu_bufnum = xgene_start_cpu_bufnum(pdata);
 
 	for (i = 0; i < pdata->rxq_cnt; i++) {
 		/* allocate rx descriptor ring */

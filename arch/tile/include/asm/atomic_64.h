@@ -37,12 +37,25 @@ static inline void atomic_add(int i, atomic_t *v)
 	__insn_fetchadd4((void *)&v->counter, i);
 }
 
+/*
+ * Note a subtlety of the locking here.  We are required to provide a
+ * full memory barrier before and after the operation.  However, we
+ * only provide an explicit mb before the operation.  After the
+ * operation, we use barrier() to get a full mb for free, because:
+ *
+ * (1) The barrier directive to the compiler prohibits any instructions
+ * being statically hoisted before the barrier;
+ * (2) the microarchitecture will not issue any further instructions
+ * until the fetchadd result is available for the "+ i" add instruction;
+ * (3) the smb_mb before the fetchadd ensures that no other memory
+ * operations are in flight at this point.
+ */
 static inline int atomic_add_return(int i, atomic_t *v)
 {
 	int val;
 	smp_mb();  /* barrier for proper semantics */
 	val = __insn_fetchadd4((void *)&v->counter, i) + i;
-	barrier();  /* the "+ i" above will wait on memory */
+	barrier();  /* equivalent to smp_mb(); see block comment above */
 	return val;
 }
 
@@ -95,7 +108,7 @@ static inline long atomic64_add_return(long i, atomic64_t *v)
 	int val;
 	smp_mb();  /* barrier for proper semantics */
 	val = __insn_fetchadd((void *)&v->counter, i) + i;
-	barrier();  /* the "+ i" above will wait on memory */
+	barrier();  /* equivalent to smp_mb; see atomic_add_return() */
 	return val;
 }
 
@@ -144,16 +157,6 @@ static inline void atomic64_xor(long i, atomic64_t *v)
 #define atomic64_add_negative(i, v)	(atomic64_add_return((i), (v)) < 0)
 
 #define atomic64_inc_not_zero(v)	atomic64_add_unless((v), 1, 0)
-
-#define atomic64_read_unchecked(v)		atomic64_read(v)
-#define atomic64_set_unchecked(v, i)		atomic64_set((v), (i))
-#define atomic64_add_unchecked(a, v)		atomic64_add((a), (v))
-#define atomic64_add_return_unchecked(a, v)	atomic64_add_return((a), (v))
-#define atomic64_sub_unchecked(a, v)		atomic64_sub((a), (v))
-#define atomic64_inc_unchecked(v)		atomic64_inc(v)
-#define atomic64_inc_return_unchecked(v)	atomic64_inc_return(v)
-#define atomic64_dec_unchecked(v)		atomic64_dec(v)
-#define atomic64_cmpxchg_unchecked(v, o, n)	atomic64_cmpxchg((v), (o), (n))
 
 #endif /* !__ASSEMBLY__ */
 

@@ -11,11 +11,6 @@
  * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
- *
  ******************************************************************************/
 #ifndef __INC_HAL8188EPHYCFG_H__
 #define __INC_HAL8188EPHYCFG_H__
@@ -205,9 +200,17 @@ void PHY_GetTxPowerLevel8188E(struct adapter *adapter, u32 *powerlevel);
 
 void PHY_ScanOperationBackup8188E(struct adapter *Adapter, u8 Operation);
 
+/*  Call after initialization */
+void ChkFwCmdIoDone(struct adapter *adapter);
+
 /*  BB/MAC/RF other monitor API */
 void PHY_SetRFPathSwitch_8188E(struct adapter *adapter,	bool main);
 
+void PHY_SwitchEphyParameter(struct adapter *adapter);
+
+void PHY_EnableHostClkReq(struct adapter *adapter);
+
+bool SetAntennaConfig92C(struct adapter *adapter, u8 defaultant);
 
 /*--------------------------Exported Function prototype---------------------*/
 

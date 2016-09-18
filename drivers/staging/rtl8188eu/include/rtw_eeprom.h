@@ -11,11 +11,6 @@
  * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
- *
  ******************************************************************************/
 #ifndef __RTW_EEPROM_H__
 #define __RTW_EEPROM_H__
@@ -120,5 +115,11 @@ struct eeprom_priv {
 	u8		EepromOrEfuse;
 	u8		efuse_eeprom_data[HWSET_MAX_SIZE_512];
 };
+
+void eeprom_write16(struct adapter *padapter, u16 reg, u16 data);
+u16 eeprom_read16(struct adapter *padapter, u16 reg);
+void read_eeprom_content(struct adapter *padapter);
+void eeprom_read_sz(struct adapter *adapt, u16 reg, u8 *data, u32 sz);
+void read_eeprom_content_by_attrib(struct adapter *padapter);
 
 #endif  /* __RTL871X_EEPROM_H__ */

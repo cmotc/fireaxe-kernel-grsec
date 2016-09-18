@@ -120,9 +120,8 @@ static void ftrace_ops_list_func(unsigned long ip, unsigned long parent_ip,
 				 struct ftrace_ops *op, struct pt_regs *regs);
 #else
 /* See comment below, where ftrace_ops_list_func is defined */
-static void ftrace_ops_no_ops(unsigned long ip, unsigned long parent_ip,
-				 struct ftrace_ops *op, struct pt_regs *regs);
-#define ftrace_ops_list_func (ftrace_ops_no_ops)
+static void ftrace_ops_no_ops(unsigned long ip, unsigned long parent_ip);
+#define ftrace_ops_list_func ((ftrace_func_t)ftrace_ops_no_ops)
 #endif
 
 /*
@@ -1531,7 +1530,19 @@ static int ftrace_cmp_recs(const void *a, const void *b)
 	return 0;
 }
 
-static unsigned long ftrace_location_range(unsigned long start, unsigned long end)
+/**
+ * ftrace_location_range - return the first address of a traced location
+ *	if it touches the given ip range
+ * @start: start of range to search.
+ * @end: end of range to search (inclusive). @end points to the last byte
+ *	to check.
+ *
+ * Returns rec->ip if the related ftrace location is a least partly within
+ * the given address range. That is, the first address of the instruction
+ * that is either a NOP or call to the function tracer. It checks the ftrace
+ * internal tables to determine if the address belongs or not.
+ */
+unsigned long ftrace_location_range(unsigned long start, unsigned long end)
 {
 	struct ftrace_page *pg;
 	struct dyn_ftrace *rec;
@@ -2468,18 +2479,13 @@ ftrace_code_disable(struct module *mod, struct dyn_ftrace *rec)
 	if (unlikely(ftrace_disabled))
 		return 0;
 
-	ret = ftrace_arch_code_modify_prepare();
-	FTRACE_WARN_ON(ret);
-	if (ret)
-		return 0;
-
 	ret = ftrace_make_nop(mod, rec, MCOUNT_ADDR);
-	FTRACE_WARN_ON(ftrace_arch_code_modify_post_process());
 	if (ret) {
 		ftrace_bug_type = FTRACE_BUG_INIT;
 		ftrace_bug(ret, rec);
+		return 0;
 	}
-	return ret ? 0 : 1;
+	return 1;
 }
 
 /*
@@ -3450,10 +3456,22 @@ struct ftrace_glob {
 	int type;
 };
 
+/*
+ * If symbols in an architecture don't correspond exactly to the user-visible
+ * name of what they represent, it is possible to define this function to
+ * perform the necessary adjustments.
+*/
+char * __weak arch_ftrace_match_adjust(char *str, const char *search)
+{
+	return str;
+}
+
 static int ftrace_match(char *str, struct ftrace_glob *g)
 {
 	int matched = 0;
 	int slen;
+
+	str = arch_ftrace_match_adjust(str, g->search);
 
 	switch (g->type) {
 	case MATCH_FULL:
@@ -4831,10 +4849,8 @@ static int ftrace_process_locs(struct module *mod,
 	if (!count)
 		return 0;
 
-	pax_open_kernel();
 	sort(start, count, sizeof(*start),
 	     ftrace_cmp_ips, NULL);
-	pax_close_kernel();
 
 	start_pg = ftrace_allocate_pages(count);
 	if (!start_pg)
@@ -5250,8 +5266,7 @@ static void ftrace_ops_list_func(unsigned long ip, unsigned long parent_ip,
 	__ftrace_ops_list_func(ip, parent_ip, NULL, regs);
 }
 #else
-static void ftrace_ops_no_ops(unsigned long ip, unsigned long parent_ip,
-				 struct ftrace_ops *op, struct pt_regs *regs)
+static void ftrace_ops_no_ops(unsigned long ip, unsigned long parent_ip)
 {
 	__ftrace_ops_list_func(ip, parent_ip, NULL, NULL);
 }
@@ -5712,12 +5727,8 @@ int ftrace_graph_entry_stub(struct ftrace_graph_ent *trace)
 }
 
 /* The callbacks that hook a function */
-static void ftrace_graph_return_stub(struct ftrace_graph_ret *trace)
-{
-	ftrace_stub(0, 0, NULL, NULL);
-}
-
-trace_func_graph_ret_t ftrace_graph_return = ftrace_graph_return_stub;
+trace_func_graph_ret_t ftrace_graph_return =
+			(trace_func_graph_ret_t)ftrace_stub;
 trace_func_graph_ent_t ftrace_graph_entry = ftrace_graph_entry_stub;
 static trace_func_graph_ent_t __ftrace_graph_entry = ftrace_graph_entry_stub;
 
@@ -5726,7 +5737,6 @@ static int alloc_retstack_tasklist(struct ftrace_ret_stack **ret_stack_list)
 {
 	int i;
 	int ret = 0;
-	unsigned long flags;
 	int start = 0, end = FTRACE_RETSTACK_ALLOC_SIZE;
 	struct task_struct *g, *t;
 
@@ -5742,7 +5752,7 @@ static int alloc_retstack_tasklist(struct ftrace_ret_stack **ret_stack_list)
 		}
 	}
 
-	read_lock_irqsave(&tasklist_lock, flags);
+	read_lock(&tasklist_lock);
 	do_each_thread(g, t) {
 		if (start == end) {
 			ret = -EAGAIN;
@@ -5751,7 +5761,7 @@ static int alloc_retstack_tasklist(struct ftrace_ret_stack **ret_stack_list)
 
 		if (t->ret_stack == NULL) {
 			atomic_set(&t->tracing_graph_pause, 0);
-			atomic_set_unchecked(&t->trace_overrun, 0);
+			atomic_set(&t->trace_overrun, 0);
 			t->curr_ret_stack = -1;
 			/* Make sure the tasks see the -1 first: */
 			smp_wmb();
@@ -5760,7 +5770,7 @@ static int alloc_retstack_tasklist(struct ftrace_ret_stack **ret_stack_list)
 	} while_each_thread(g, t);
 
 unlock:
-	read_unlock_irqrestore(&tasklist_lock, flags);
+	read_unlock(&tasklist_lock);
 free:
 	for (i = start; i < end; i++)
 		kfree(ret_stack_list[i]);
@@ -5946,7 +5956,7 @@ void unregister_ftrace_graph(void)
 		goto out;
 
 	ftrace_graph_active--;
-	ftrace_graph_return = ftrace_graph_return_stub;
+	ftrace_graph_return = (trace_func_graph_ret_t)ftrace_stub;
 	ftrace_graph_entry = ftrace_graph_entry_stub;
 	__ftrace_graph_entry = ftrace_graph_entry_stub;
 	ftrace_shutdown(&graph_ops, FTRACE_STOP_FUNC_RET);
@@ -5974,7 +5984,7 @@ static void
 graph_init_task(struct task_struct *t, struct ftrace_ret_stack *ret_stack)
 {
 	atomic_set(&t->tracing_graph_pause, 0);
-	atomic_set_unchecked(&t->trace_overrun, 0);
+	atomic_set(&t->trace_overrun, 0);
 	t->ftrace_timestamp = 0;
 	/* make curr_ret_stack visible before we add the ret_stack */
 	smp_wmb();

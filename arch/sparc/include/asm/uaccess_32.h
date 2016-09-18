@@ -47,7 +47,6 @@
 #define __user_ok(addr, size) ({ (void)(size); (addr) < STACK_TOP; })
 #define __kernel_ok (segment_eq(get_fs(), KERNEL_DS))
 #define __access_ok(addr, size) (__user_ok((addr) & get_fs().seg, (size)))
-#define access_ok_noprefault(type, addr, size) access_ok((type), (addr), (size))
 #define access_ok(type, addr, size) \
 	({ (void)(type); __access_ok((unsigned long)(addr), size); })
 
@@ -249,46 +248,27 @@ unsigned long __copy_user(void __user *to, const void __user *from, unsigned lon
 
 static inline unsigned long copy_to_user(void __user *to, const void *from, unsigned long n)
 {
-	if ((long)n < 0)
-		return n;
-
-	if (n && __access_ok((unsigned long) to, n)) {
-		if (!__builtin_constant_p(n))
-			check_object_size(from, n, true);
+	if (n && __access_ok((unsigned long) to, n))
 		return __copy_user(to, (__force void __user *) from, n);
-	} else
+	else
 		return n;
 }
 
 static inline unsigned long __copy_to_user(void __user *to, const void *from, unsigned long n)
 {
-	if ((long)n < 0)
-		return n;
-
-	if (!__builtin_constant_p(n))
-		check_object_size(from, n, true);
-
 	return __copy_user(to, (__force void __user *) from, n);
 }
 
 static inline unsigned long copy_from_user(void *to, const void __user *from, unsigned long n)
 {
-	if ((long)n < 0)
-		return n;
-
-	if (n && __access_ok((unsigned long) from, n)) {
-		if (!__builtin_constant_p(n))
-			check_object_size(to, n, false);
+	if (n && __access_ok((unsigned long) from, n))
 		return __copy_user((__force void __user *) to, from, n);
-	} else
+	else
 		return n;
 }
 
 static inline unsigned long __copy_from_user(void *to, const void __user *from, unsigned long n)
 {
-	if ((long)n < 0)
-		return n;
-
 	return __copy_user((__force void __user *) to, from, n);
 }
 

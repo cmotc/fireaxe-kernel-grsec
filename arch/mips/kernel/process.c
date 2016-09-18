@@ -73,14 +73,6 @@ void start_thread(struct pt_regs * regs, unsigned long pc, unsigned long sp)
 	regs->regs[29] = sp;
 }
 
-void exit_thread(void)
-{
-}
-
-void flush_thread(void)
-{
-}
-
 int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
 {
 	/*
@@ -353,7 +345,7 @@ static int get_frame_info(struct mips_frame_info *info)
 		return 0;
 	if (info->pc_offset < 0) /* leaf */
 		return 1;
-	/* prologue seems boggus... */
+	/* prologue seems bogus... */
 err:
 	return -1;
 }
@@ -537,6 +529,18 @@ unsigned long get_wchan(struct task_struct *task)
 
 out:
 	return pc;
+}
+
+/*
+ * Don't forget that the stack pointer must be aligned on a 8 bytes
+ * boundary for 32-bits ABI and 16 bytes for 64-bits ABI.
+ */
+unsigned long arch_align_stack(unsigned long sp)
+{
+	if (!(current->personality & ADDR_NO_RANDOMIZE) && randomize_va_space)
+		sp -= get_random_int() & ~PAGE_MASK;
+
+	return sp & ALMASK;
 }
 
 static void arch_dump_stack(void *info)

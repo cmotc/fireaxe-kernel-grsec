@@ -370,7 +370,7 @@ struct usb_bus {
 					 * with the URB_SHORT_NOT_OK flag set.
 					 */
 	unsigned no_sg_constraint:1;	/* no sg constraint */
-	unsigned short sg_tablesize;	/* 0 or largest number of sg list entries */
+	unsigned sg_tablesize;		/* 0 or largest number of sg list entries */
 
 	int devnum_next;		/* Next open device number in
 					 * round-robin allocation */
@@ -599,7 +599,7 @@ struct usb_device {
 	int maxchild;
 
 	u32 quirks;
-	atomic_unchecked_t urbnum;
+	atomic_t urbnum;
 
 	unsigned long active_duration;
 
@@ -719,7 +719,7 @@ extern void usb_enable_ltm(struct usb_device *udev);
 
 static inline bool usb_device_supports_ltm(struct usb_device *udev)
 {
-	if (udev->speed != USB_SPEED_SUPER || !udev->bos || !udev->bos->ss_cap)
+	if (udev->speed < USB_SPEED_SUPER || !udev->bos || !udev->bos->ss_cap)
 		return false;
 	return udev->bos->ss_cap->bmAttributes & USB_LTM_SUPPORT;
 }
@@ -1568,7 +1568,7 @@ static inline void usb_fill_bulk_urb(struct urb *urb,
  * Initializes a interrupt urb with the proper information needed to submit
  * it to a device.
  *
- * Note that High Speed and SuperSpeed interrupt endpoints use a logarithmic
+ * Note that High Speed and SuperSpeed(+) interrupt endpoints use a logarithmic
  * encoding of the endpoint interval, and express polling intervals in
  * microframes (eight per millisecond) rather than in frames (one per
  * millisecond).
@@ -1594,7 +1594,7 @@ static inline void usb_fill_int_urb(struct urb *urb,
 	urb->complete = complete_fn;
 	urb->context = context;
 
-	if (dev->speed == USB_SPEED_HIGH || dev->speed == USB_SPEED_SUPER) {
+	if (dev->speed == USB_SPEED_HIGH || dev->speed >= USB_SPEED_SUPER) {
 		/* make sure interval is within allowed range */
 		interval = clamp(interval, 1, 16);
 
@@ -1793,10 +1793,10 @@ void usb_sg_wait(struct usb_sg_request *io);
 
 /* NOTE:  these are not the standard USB_ENDPOINT_XFER_* values!! */
 /* (yet ... they're the values used by usbfs) */
-#define PIPE_ISOCHRONOUS		0U
-#define PIPE_INTERRUPT			1U
-#define PIPE_CONTROL			2U
-#define PIPE_BULK			3U
+#define PIPE_ISOCHRONOUS		0
+#define PIPE_INTERRUPT			1
+#define PIPE_CONTROL			2
+#define PIPE_BULK			3
 
 #define usb_pipein(pipe)	((pipe) & USB_DIR_IN)
 #define usb_pipeout(pipe)	(!usb_pipein(pipe))

@@ -25,7 +25,6 @@
 #include <linux/kobject.h>
 #include <linux/cdev.h>
 #include <linux/uio_driver.h>
-#include <asm/local.h>
 
 #define UIO_MAX_DEVICES		(1U << MINORBITS)
 
@@ -232,7 +231,7 @@ static ssize_t event_show(struct device *dev,
 			  struct device_attribute *attr, char *buf)
 {
 	struct uio_device *idev = dev_get_drvdata(dev);
-	return sprintf(buf, "%u\n", (unsigned int)atomic_read_unchecked(&idev->event));
+	return sprintf(buf, "%u\n", (unsigned int)atomic_read(&idev->event));
 }
 static DEVICE_ATTR_RO(event);
 
@@ -272,12 +271,16 @@ static int uio_dev_add_attributes(struct uio_device *idev)
 			map_found = 1;
 			idev->map_dir = kobject_create_and_add("maps",
 							&idev->dev->kobj);
-			if (!idev->map_dir)
+			if (!idev->map_dir) {
+				ret = -ENOMEM;
 				goto err_map;
+			}
 		}
 		map = kzalloc(sizeof(*map), GFP_KERNEL);
-		if (!map)
+		if (!map) {
+			ret = -ENOMEM;
 			goto err_map_kobj;
+		}
 		kobject_init(&map->kobj, &map_attr_type);
 		map->mem = mem;
 		mem->map = map;
@@ -297,12 +300,16 @@ static int uio_dev_add_attributes(struct uio_device *idev)
 			portio_found = 1;
 			idev->portio_dir = kobject_create_and_add("portio",
 							&idev->dev->kobj);
-			if (!idev->portio_dir)
+			if (!idev->portio_dir) {
+				ret = -ENOMEM;
 				goto err_portio;
+			}
 		}
 		portio = kzalloc(sizeof(*portio), GFP_KERNEL);
-		if (!portio)
+		if (!portio) {
+			ret = -ENOMEM;
 			goto err_portio_kobj;
+		}
 		kobject_init(&portio->kobj, &portio_attr_type);
 		portio->port = port;
 		port->portio = portio;
@@ -394,7 +401,7 @@ void uio_event_notify(struct uio_info *info)
 {
 	struct uio_device *idev = info->uio_dev;
 
-	atomic_inc_unchecked(&idev->event);
+	atomic_inc(&idev->event);
 	wake_up_interruptible(&idev->wait);
 	kill_fasync(&idev->async_queue, SIGIO, POLL_IN);
 }
@@ -447,7 +454,7 @@ static int uio_open(struct inode *inode, struct file *filep)
 	}
 
 	listener->dev = idev;
-	listener->event_count = atomic_read_unchecked(&idev->event);
+	listener->event_count = atomic_read(&idev->event);
 	filep->private_data = listener;
 
 	if (idev->info->open) {
@@ -498,7 +505,7 @@ static unsigned int uio_poll(struct file *filep, poll_table *wait)
 		return -EIO;
 
 	poll_wait(filep, &idev->wait, wait);
-	if (listener->event_count != atomic_read_unchecked(&idev->event))
+	if (listener->event_count != atomic_read(&idev->event))
 		return POLLIN | POLLRDNORM;
 	return 0;
 }
@@ -523,7 +530,7 @@ static ssize_t uio_read(struct file *filep, char __user *buf,
 	do {
 		set_current_state(TASK_INTERRUPTIBLE);
 
-		event_count = atomic_read_unchecked(&idev->event);
+		event_count = atomic_read(&idev->event);
 		if (event_count != listener->event_count) {
 			__set_current_state(TASK_RUNNING);
 			if (copy_to_user(buf, &event_count, count))
@@ -581,13 +588,9 @@ static ssize_t uio_write(struct file *filep, const char __user *buf,
 static int uio_find_mem_index(struct vm_area_struct *vma)
 {
 	struct uio_device *idev = vma->vm_private_data;
-	unsigned long size;
 
 	if (vma->vm_pgoff < MAX_UIO_MAPS) {
-		size = idev->info->mem[vma->vm_pgoff].size;
-		if (size == 0)
-			return -1;
-		if (vma->vm_end - vma->vm_start > size)
+		if (idev->info->mem[vma->vm_pgoff].size == 0)
 			return -1;
 		return (int)vma->vm_pgoff;
 	}
@@ -819,7 +822,7 @@ int __uio_register_device(struct module *owner,
 	idev->owner = owner;
 	idev->info = info;
 	init_waitqueue_head(&idev->wait);
-	atomic_set_unchecked(&idev->event, 0);
+	atomic_set(&idev->event, 0);
 
 	ret = uio_get_minor(idev);
 	if (ret)

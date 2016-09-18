@@ -34,7 +34,7 @@ static DEFINE_MUTEX(kernfs_open_file_mutex);
 
 struct kernfs_open_node {
 	atomic_t		refcnt;
-	atomic_unchecked_t	event;
+	atomic_t		event;
 	wait_queue_head_t	poll;
 	struct list_head	files; /* goes through kernfs_open_file.list */
 };
@@ -163,7 +163,7 @@ static int kernfs_seq_show(struct seq_file *sf, void *v)
 {
 	struct kernfs_open_file *of = sf->private;
 
-	of->event = atomic_read_unchecked(&of->kn->attr.open->event);
+	of->event = atomic_read(&of->kn->attr.open->event);
 
 	return of->kn->attr.ops->seq_show(sf, v);
 }
@@ -190,15 +190,16 @@ static ssize_t kernfs_file_direct_read(struct kernfs_open_file *of,
 	char *buf;
 
 	buf = of->prealloc_buf;
-	if (!buf)
+	if (buf)
+		mutex_lock(&of->prealloc_mutex);
+	else
 		buf = kmalloc(len, GFP_KERNEL);
 	if (!buf)
 		return -ENOMEM;
 
 	/*
 	 * @of->mutex nests outside active ref and is used both to ensure that
-	 * the ops aren't called concurrently for the same open file, and
-	 * to provide exclusive access to ->prealloc_buf (when that exists).
+	 * the ops aren't called concurrently for the same open file.
 	 */
 	mutex_lock(&of->mutex);
 	if (!kernfs_get_active(of->kn)) {
@@ -207,28 +208,30 @@ static ssize_t kernfs_file_direct_read(struct kernfs_open_file *of,
 		goto out_free;
 	}
 
-	of->event = atomic_read_unchecked(&of->kn->attr.open->event);
+	of->event = atomic_read(&of->kn->attr.open->event);
 	ops = kernfs_ops(of->kn);
 	if (ops->read)
 		len = ops->read(of, buf, len, *ppos);
 	else
 		len = -EINVAL;
 
+	kernfs_put_active(of->kn);
+	mutex_unlock(&of->mutex);
+
 	if (len < 0)
-		goto out_unlock;
+		goto out_free;
 
 	if (copy_to_user(user_buf, buf, len)) {
 		len = -EFAULT;
-		goto out_unlock;
+		goto out_free;
 	}
 
 	*ppos += len;
 
- out_unlock:
-	kernfs_put_active(of->kn);
-	mutex_unlock(&of->mutex);
  out_free:
-	if (buf != of->prealloc_buf)
+	if (buf == of->prealloc_buf)
+		mutex_unlock(&of->prealloc_mutex);
+	else
 		kfree(buf);
 	return len;
 }
@@ -272,7 +275,7 @@ static ssize_t kernfs_fop_write(struct file *file, const char __user *user_buf,
 {
 	struct kernfs_open_file *of = kernfs_of(file);
 	const struct kernfs_ops *ops;
-	ssize_t len;
+	size_t len;
 	char *buf;
 
 	if (of->atomic_write_len) {
@@ -284,15 +287,22 @@ static ssize_t kernfs_fop_write(struct file *file, const char __user *user_buf,
 	}
 
 	buf = of->prealloc_buf;
-	if (!buf)
+	if (buf)
+		mutex_lock(&of->prealloc_mutex);
+	else
 		buf = kmalloc(len + 1, GFP_KERNEL);
 	if (!buf)
 		return -ENOMEM;
 
+	if (copy_from_user(buf, user_buf, len)) {
+		len = -EFAULT;
+		goto out_free;
+	}
+	buf[len] = '\0';	/* guarantee string termination */
+
 	/*
 	 * @of->mutex nests outside active ref and is used both to ensure that
-	 * the ops aren't called concurrently for the same open file, and
-	 * to provide exclusive access to ->prealloc_buf (when that exists).
+	 * the ops aren't called concurrently for the same open file.
 	 */
 	mutex_lock(&of->mutex);
 	if (!kernfs_get_active(of->kn)) {
@@ -301,26 +311,22 @@ static ssize_t kernfs_fop_write(struct file *file, const char __user *user_buf,
 		goto out_free;
 	}
 
-	if (copy_from_user(buf, user_buf, len)) {
-		len = -EFAULT;
-		goto out_unlock;
-	}
-	buf[len] = '\0';	/* guarantee string termination */
-
 	ops = kernfs_ops(of->kn);
 	if (ops->write)
 		len = ops->write(of, buf, len, *ppos);
 	else
 		len = -EINVAL;
 
+	kernfs_put_active(of->kn);
+	mutex_unlock(&of->mutex);
+
 	if (len > 0)
 		*ppos += len;
 
-out_unlock:
-	kernfs_put_active(of->kn);
-	mutex_unlock(&of->mutex);
 out_free:
-	if (buf != of->prealloc_buf)
+	if (buf == of->prealloc_buf)
+		mutex_unlock(&of->prealloc_mutex);
+	else
 		kfree(buf);
 	return len;
 }
@@ -385,12 +391,12 @@ static int kernfs_vma_page_mkwrite(struct vm_area_struct *vma,
 	return ret;
 }
 
-static ssize_t kernfs_vma_access(struct vm_area_struct *vma, unsigned long addr,
-			     void *buf, size_t len, int write)
+static int kernfs_vma_access(struct vm_area_struct *vma, unsigned long addr,
+			     void *buf, int len, int write)
 {
 	struct file *file = vma->vm_file;
 	struct kernfs_open_file *of = kernfs_of(file);
-	ssize_t ret;
+	int ret;
 
 	if (!of->vm_ops)
 		return -EINVAL;
@@ -569,7 +575,7 @@ static int kernfs_get_open_node(struct kernfs_node *kn,
 		return -ENOMEM;
 
 	atomic_set(&new_on->refcnt, 0);
-	atomic_set_unchecked(&new_on->event, 1);
+	atomic_set(&new_on->event, 1);
 	init_waitqueue_head(&new_on->poll);
 	INIT_LIST_HEAD(&new_on->files);
 	goto retry;
@@ -687,6 +693,7 @@ static int kernfs_fop_open(struct inode *inode, struct file *file)
 		error = -ENOMEM;
 		if (!of->prealloc_buf)
 			goto err_free;
+		mutex_init(&of->prealloc_mutex);
 	}
 
 	/*
@@ -792,7 +799,7 @@ static unsigned int kernfs_fop_poll(struct file *filp, poll_table *wait)
 
 	kernfs_put_active(kn);
 
-	if (of->event != atomic_read_unchecked(&on->event))
+	if (of->event != atomic_read(&on->event))
 		goto trigger;
 
 	return DEFAULT_POLLMASK;
@@ -823,7 +830,7 @@ repeat:
 
 	on = kn->attr.open;
 	if (on) {
-		atomic_inc_unchecked(&on->event);
+		atomic_inc(&on->event);
 		wake_up_interruptible(&on->poll);
 	}
 

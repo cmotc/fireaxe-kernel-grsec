@@ -11,11 +11,6 @@
  * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
- *
  ******************************************************************************/
 #ifndef __XMIT_OSDEP_H_
 #define __XMIT_OSDEP_H_
@@ -40,7 +35,7 @@ struct sta_xmit_priv;
 struct xmit_frame;
 struct xmit_buf;
 
-netdev_tx_t rtw_xmit_entry(struct sk_buff *pkt, struct  net_device *pnetdev);
+int rtw_xmit_entry(struct sk_buff *pkt, struct  net_device *pnetdev);
 
 void rtw_os_xmit_schedule(struct adapter *padapter);
 

@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2004-2015 Emulex.  All rights reserved.           *
+ * Copyright (C) 2004-2016 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
  * www.emulex.com                                                  *
  * Portions Copyright (C) 2004-2005 Christoph Hellwig              *
@@ -6158,11 +6158,12 @@ lpfc_create_shost(struct lpfc_hba *phba)
 	 * any initial discovery should be completed.
 	 */
 	vport->load_flag |= FC_ALLOW_FDMI;
-	if (phba->cfg_fdmi_on > LPFC_FDMI_NO_SUPPORT) {
+	if (phba->cfg_enable_SmartSAN ||
+	    (phba->cfg_fdmi_on == LPFC_FDMI_SUPPORT)) {
 
 		/* Setup appropriate attribute masks */
 		vport->fdmi_hba_mask = LPFC_FDMI2_HBA_ATTR;
-		if (phba->cfg_fdmi_on == LPFC_FDMI_SMART_SAN)
+		if (phba->cfg_enable_SmartSAN)
 			vport->fdmi_port_mask = LPFC_FDMI2_SMART_ATTR;
 		else
 			vport->fdmi_port_mask = LPFC_FDMI2_PORT_ATTR;
@@ -7264,8 +7265,15 @@ lpfc_sli4_queue_create(struct lpfc_hba *phba)
 		phba->sli4_hba.fcp_cq[idx] = qdesc;
 
 		/* Create Fast Path FCP WQs */
-		qdesc = lpfc_sli4_queue_alloc(phba, phba->sli4_hba.wq_esize,
-					      phba->sli4_hba.wq_ecount);
+		if (phba->fcp_embed_io) {
+			qdesc = lpfc_sli4_queue_alloc(phba,
+						      LPFC_WQE128_SIZE,
+						      LPFC_WQE128_DEF_COUNT);
+		} else {
+			qdesc = lpfc_sli4_queue_alloc(phba,
+						      phba->sli4_hba.wq_esize,
+						      phba->sli4_hba.wq_ecount);
+		}
 		if (!qdesc) {
 			lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
 					"0503 Failed allocate fast-path FCP "
@@ -9510,6 +9518,15 @@ lpfc_get_sli4_parameters(struct lpfc_hba *phba, LPFC_MBOXQ_t *mboxq)
 	if (sli4_params->sge_supp_len > LPFC_MAX_SGE_SIZE)
 		sli4_params->sge_supp_len = LPFC_MAX_SGE_SIZE;
 
+	/*
+	 * Issue IOs with CDB embedded in WQE to minimized the number
+	 * of DMAs the firmware has to do. Setting this to 1 also forces
+	 * the driver to use 128 bytes WQEs for FCP IOs.
+	 */
+	if (bf_get(cfg_ext_embed_cb, mbx_sli4_parameters))
+		phba->fcp_embed_io = 1;
+	else
+		phba->fcp_embed_io = 0;
 	return 0;
 }
 
@@ -11028,7 +11045,7 @@ lpfc_pci_resume_one(struct pci_dev *pdev)
  * 	PCI_ERS_RESULT_DISCONNECT - device could not be recovered
  **/
 static pci_ers_result_t
-lpfc_io_error_detected(struct pci_dev *pdev, enum pci_channel_state state)
+lpfc_io_error_detected(struct pci_dev *pdev, pci_channel_state_t state)
 {
 	struct Scsi_Host *shost = pci_get_drvdata(pdev);
 	struct lpfc_hba *phba = ((struct lpfc_vport *)shost->hostdata)->phba;
@@ -11436,10 +11453,8 @@ lpfc_init(void)
 			"misc_register returned with status %d", error);
 
 	if (lpfc_enable_npiv) {
-		pax_open_kernel();
-		const_cast(lpfc_transport_functions.vport_create) = lpfc_vport_create;
-		const_cast(lpfc_transport_functions.vport_delete) = lpfc_vport_delete;
-		pax_close_kernel();
+		lpfc_transport_functions.vport_create = lpfc_vport_create;
+		lpfc_transport_functions.vport_delete = lpfc_vport_delete;
 	}
 	lpfc_transport_template =
 				fc_attach_transport(&lpfc_transport_functions);

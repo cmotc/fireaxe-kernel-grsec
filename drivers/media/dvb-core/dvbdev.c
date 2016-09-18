@@ -428,7 +428,7 @@ int dvb_register_device(struct dvb_adapter *adap, struct dvb_device **pdvbdev,
 			int demux_sink_pads)
 {
 	struct dvb_device *dvbdev;
-	file_operations_no_const *dvbdevfops;
+	struct file_operations *dvbdevfops;
 	struct device *clsdev;
 	int minor;
 	int id, ret;
@@ -676,13 +676,13 @@ int dvb_create_media_graph(struct dvb_adapter *adap,
 					     demux, 0, MEDIA_LNK_FL_ENABLED,
 					     false);
 		if (ret)
-			return -ENOMEM;
+			return ret;
 	}
 	if (demux && ca) {
 		ret = media_create_pad_link(demux, 1, ca,
 					    0, MEDIA_LNK_FL_ENABLED);
 		if (ret)
-			return -ENOMEM;
+			return ret;
 	}
 
 	/* Create demux links for each ringbuffer/pad */

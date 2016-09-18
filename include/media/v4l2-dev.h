@@ -74,7 +74,7 @@ struct v4l2_file_operations {
 	int (*mmap) (struct file *, struct vm_area_struct *);
 	int (*open) (struct file *);
 	int (*release) (struct file *);
-} __do_const;
+};
 
 /*
  * Newer version of video_device, handled by videodev2.c
@@ -91,6 +91,9 @@ struct video_device
 #endif
 	/* device ops */
 	const struct v4l2_file_operations *fops;
+
+	/* device capabilities as used in v4l2_capabilities */
+	u32 device_caps;
 
 	/* sysfs */
 	struct device dev;		/* v4l device */

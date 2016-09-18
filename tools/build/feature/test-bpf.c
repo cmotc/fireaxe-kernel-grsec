@@ -28,6 +28,5 @@ int main(void)
 	attr.log_level = 0;
 	attr.kern_version = 0;
 
-	attr = attr;
 	return 0;
 }

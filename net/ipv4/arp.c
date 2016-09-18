@@ -332,7 +332,7 @@ static void arp_solicit(struct neighbour *neigh, struct sk_buff *skb)
 	u8 dst_ha[MAX_ADDR_LEN], *dst_hw = NULL;
 	struct net_device *dev = neigh->dev;
 	__be32 target = *(__be32 *)neigh->primary_key;
-	int probes = atomic_read_unchecked(&neigh->probes);
+	int probes = atomic_read(&neigh->probes);
 	struct in_device *in_dev;
 	struct dst_entry *dst = NULL;
 
@@ -436,7 +436,7 @@ static int arp_filter(__be32 sip, __be32 tip, struct net_device *dev)
 	if (IS_ERR(rt))
 		return 1;
 	if (rt->dst.dev != dev) {
-		NET_INC_STATS_BH(net, LINUX_MIB_ARPFILTER);
+		__NET_INC_STATS(net, LINUX_MIB_ARPFILTER);
 		flag = 1;
 	}
 	ip_rt_put(rt);

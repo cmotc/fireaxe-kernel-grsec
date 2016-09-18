@@ -27,6 +27,7 @@ struct hugetlb_cgroup {
 	struct page_counter hugepage[HUGE_MAX_HSTATE];
 };
 
+#define MEMFILE_PRIVATE(x, val)	(((x) << 16) | (val))
 #define MEMFILE_IDX(val)	(((val) >> 16) & 0xffff)
 #define MEMFILE_ATTR(val)	((val) & 0xffff)
 
@@ -66,26 +67,42 @@ static inline bool hugetlb_cgroup_have_usage(struct hugetlb_cgroup *h_cg)
 	return false;
 }
 
+static void hugetlb_cgroup_init(struct hugetlb_cgroup *h_cgroup,
+				struct hugetlb_cgroup *parent_h_cgroup)
+{
+	int idx;
+
+	for (idx = 0; idx < HUGE_MAX_HSTATE; idx++) {
+		struct page_counter *counter = &h_cgroup->hugepage[idx];
+		struct page_counter *parent = NULL;
+		unsigned long limit;
+		int ret;
+
+		if (parent_h_cgroup)
+			parent = &parent_h_cgroup->hugepage[idx];
+		page_counter_init(counter, parent);
+
+		limit = round_down(PAGE_COUNTER_MAX,
+				   1 << huge_page_order(&hstates[idx]));
+		ret = page_counter_limit(counter, limit);
+		VM_BUG_ON(ret);
+	}
+}
+
 static struct cgroup_subsys_state *
 hugetlb_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 {
 	struct hugetlb_cgroup *parent_h_cgroup = hugetlb_cgroup_from_css(parent_css);
 	struct hugetlb_cgroup *h_cgroup;
-	int idx;
 
 	h_cgroup = kzalloc(sizeof(*h_cgroup), GFP_KERNEL);
 	if (!h_cgroup)
 		return ERR_PTR(-ENOMEM);
 
-	if (parent_h_cgroup) {
-		for (idx = 0; idx < HUGE_MAX_HSTATE; idx++)
-			page_counter_init(&h_cgroup->hugepage[idx],
-					  &parent_h_cgroup->hugepage[idx]);
-	} else {
+	if (!parent_h_cgroup)
 		root_h_cgroup = h_cgroup;
-		for (idx = 0; idx < HUGE_MAX_HSTATE; idx++)
-			page_counter_init(&h_cgroup->hugepage[idx], NULL);
-	}
+
+	hugetlb_cgroup_init(h_cgroup, parent_h_cgroup);
 	return &h_cgroup->css;
 }
 
@@ -237,7 +254,14 @@ void hugetlb_cgroup_uncharge_cgroup(int idx, unsigned long nr_pages,
 	return;
 }
 
-u64 hugetlb_cgroup_read_u64(struct cgroup_subsys_state *css,
+enum {
+	RES_USAGE,
+	RES_LIMIT,
+	RES_MAX_USAGE,
+	RES_FAILCNT,
+};
+
+static u64 hugetlb_cgroup_read_u64(struct cgroup_subsys_state *css,
 				   struct cftype *cft)
 {
 	struct page_counter *counter;
@@ -261,7 +285,7 @@ u64 hugetlb_cgroup_read_u64(struct cgroup_subsys_state *css,
 
 static DEFINE_MUTEX(hugetlb_limit_mutex);
 
-ssize_t hugetlb_cgroup_write(struct kernfs_open_file *of,
+static ssize_t hugetlb_cgroup_write(struct kernfs_open_file *of,
 				    char *buf, size_t nbytes, loff_t off)
 {
 	int ret, idx;
@@ -277,6 +301,7 @@ ssize_t hugetlb_cgroup_write(struct kernfs_open_file *of,
 		return ret;
 
 	idx = MEMFILE_IDX(of_cft(of)->private);
+	nr_pages = round_down(nr_pages, 1 << huge_page_order(&hstates[idx]));
 
 	switch (MEMFILE_ATTR(of_cft(of)->private)) {
 	case RES_LIMIT:
@@ -291,7 +316,7 @@ ssize_t hugetlb_cgroup_write(struct kernfs_open_file *of,
 	return ret ?: nbytes;
 }
 
-ssize_t hugetlb_cgroup_reset(struct kernfs_open_file *of,
+static ssize_t hugetlb_cgroup_reset(struct kernfs_open_file *of,
 				    char *buf, size_t nbytes, loff_t off)
 {
 	int ret = 0;
@@ -327,26 +352,46 @@ static char *mem_fmt(char *buf, int size, unsigned long hsize)
 
 static void __init __hugetlb_cgroup_file_init(int idx)
 {
-	char names[4][MAX_CFTYPE_NAME];
 	char buf[32];
+	struct cftype *cft;
 	struct hstate *h = &hstates[idx];
 
 	/* format the size */
 	mem_fmt(buf, 32, huge_page_size(h));
-	snprintf(names[0], MAX_CFTYPE_NAME, "%s.limit_in_bytes", buf);
-	snprintf(names[1], MAX_CFTYPE_NAME, "%s.usage_in_bytes", buf);
-	snprintf(names[2], MAX_CFTYPE_NAME, "%s.max_usage_in_bytes", buf);
-	snprintf(names[3], MAX_CFTYPE_NAME, "%s.failcnt", buf);
 
-	pax_open_kernel();
-	strncpy((void *)(*h->cgroup_files)[0].name, names[0], MAX_CFTYPE_NAME);
-	strncpy((void *)(*h->cgroup_files)[1].name, names[1], MAX_CFTYPE_NAME);
-	strncpy((void *)(*h->cgroup_files)[2].name, names[2], MAX_CFTYPE_NAME);
-	strncpy((void *)(*h->cgroup_files)[3].name, names[3], MAX_CFTYPE_NAME);
-	pax_close_kernel();
+	/* Add the limit file */
+	cft = &h->cgroup_files[0];
+	snprintf(cft->name, MAX_CFTYPE_NAME, "%s.limit_in_bytes", buf);
+	cft->private = MEMFILE_PRIVATE(idx, RES_LIMIT);
+	cft->read_u64 = hugetlb_cgroup_read_u64;
+	cft->write = hugetlb_cgroup_write;
+
+	/* Add the usage file */
+	cft = &h->cgroup_files[1];
+	snprintf(cft->name, MAX_CFTYPE_NAME, "%s.usage_in_bytes", buf);
+	cft->private = MEMFILE_PRIVATE(idx, RES_USAGE);
+	cft->read_u64 = hugetlb_cgroup_read_u64;
+
+	/* Add the MAX usage file */
+	cft = &h->cgroup_files[2];
+	snprintf(cft->name, MAX_CFTYPE_NAME, "%s.max_usage_in_bytes", buf);
+	cft->private = MEMFILE_PRIVATE(idx, RES_MAX_USAGE);
+	cft->write = hugetlb_cgroup_reset;
+	cft->read_u64 = hugetlb_cgroup_read_u64;
+
+	/* Add the failcntfile */
+	cft = &h->cgroup_files[3];
+	snprintf(cft->name, MAX_CFTYPE_NAME, "%s.failcnt", buf);
+	cft->private  = MEMFILE_PRIVATE(idx, RES_FAILCNT);
+	cft->write = hugetlb_cgroup_reset;
+	cft->read_u64 = hugetlb_cgroup_read_u64;
+
+	/* NULL terminate the last cft */
+	cft = &h->cgroup_files[4];
+	memset(cft, 0, sizeof(*cft));
 
 	WARN_ON(cgroup_add_legacy_cftypes(&hugetlb_cgrp_subsys,
-					  *h->cgroup_files));
+					  h->cgroup_files));
 }
 
 void __init hugetlb_cgroup_file_init(void)

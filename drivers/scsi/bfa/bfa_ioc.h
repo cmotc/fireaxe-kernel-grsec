@@ -259,7 +259,7 @@ struct bfa_ioc_cbfn_s {
 	bfa_ioc_disable_cbfn_t	disable_cbfn;
 	bfa_ioc_hbfail_cbfn_t	hbfail_cbfn;
 	bfa_ioc_reset_cbfn_t	reset_cbfn;
-} __no_const;
+};
 
 /*
  * IOC event notification mechanism.
@@ -286,20 +286,16 @@ struct bfa_ioc_notify_s {
 	(__notify)->cbarg = (__cbarg);      \
 } while (0)
 
-enum iocpf_event;
-
 struct bfa_iocpf_s {
-	void (*fsm)(struct bfa_iocpf_s *, enum iocpf_event);
+	bfa_fsm_t		fsm;
 	struct bfa_ioc_s	*ioc;
 	bfa_boolean_t		fw_mismatch_notified;
 	bfa_boolean_t		auto_recover;
 	u32			poll_time;
 };
 
-enum ioc_event;
-
 struct bfa_ioc_s {
-	void (*fsm)(struct bfa_ioc_s *, enum ioc_event);
+	bfa_fsm_t		fsm;
 	struct bfa_s		*bfa;
 	struct bfa_pcidev_s	pcidev;
 	struct bfa_timer_mod_s	*timer_mod;
@@ -357,7 +353,7 @@ struct bfa_ioc_hwif_s {
 	void		(*ioc_set_alt_fwstate)	(struct bfa_ioc_s *ioc,
 					enum bfi_ioc_state fwstate);
 	enum bfi_ioc_state	(*ioc_get_alt_fwstate)	(struct bfa_ioc_s *ioc);
-} __no_const;
+};
 
 /*
  * Queue element to wait for room in request queue. FIFO order is
@@ -783,10 +779,8 @@ struct bfa_dconf_s {
 };
 #pragma pack()
 
-enum bfa_dconf_event;
-
 struct bfa_dconf_mod_s {
-	void (*sm)(struct bfa_dconf_mod_s *, enum bfa_dconf_event);
+	bfa_sm_t		sm;
 	u8			instance;
 	bfa_boolean_t		read_data_valid;
 	bfa_boolean_t		min_cfg;

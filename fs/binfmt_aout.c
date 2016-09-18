@@ -16,7 +16,6 @@
 #include <linux/string.h>
 #include <linux/fs.h>
 #include <linux/file.h>
-#include <linux/security.h>
 #include <linux/stat.h>
 #include <linux/fcntl.h>
 #include <linux/ptrace.h>
@@ -59,8 +58,6 @@ static int aout_core_dump(struct coredump_params *cprm)
 #endif
 #       define START_STACK(u)   ((void __user *)u.start_stack)
 
-	memset(&dump, 0, sizeof(dump));
-
 	fs = get_fs();
 	set_fs(KERNEL_DS);
 	has_dumped = 1;
@@ -71,12 +68,10 @@ static int aout_core_dump(struct coredump_params *cprm)
 
 /* If the size of the dump file exceeds the rlimit, then see what would happen
    if we wrote the stack, but not the data area.  */
-	gr_learn_resource(current, RLIMIT_CORE, (dump.u_dsize + dump.u_ssize+1) * PAGE_SIZE, 1);
 	if ((dump.u_dsize + dump.u_ssize+1) * PAGE_SIZE > cprm->limit)
 		dump.u_dsize = 0;
 
 /* Make sure we have enough room to write the stack and data areas. */
-	gr_learn_resource(current, RLIMIT_CORE, (dump.u_ssize + 1) * PAGE_SIZE, 1);
 	if ((dump.u_ssize + 1) * PAGE_SIZE > cprm->limit)
 		dump.u_ssize = 0;
 
@@ -132,12 +127,8 @@ static int set_brk(unsigned long start, unsigned long end)
 {
 	start = PAGE_ALIGN(start);
 	end = PAGE_ALIGN(end);
-	if (end > start) {
-		unsigned long addr;
-		addr = vm_brk(start, end - start);
-		if (BAD_ADDR(addr))
-			return addr;
-	}
+	if (end > start)
+		return vm_brk(start, end - start);
 	return 0;
 }
 
@@ -237,8 +228,6 @@ static int load_aout_binary(struct linux_binprm * bprm)
 	rlim = rlimit(RLIMIT_DATA);
 	if (rlim >= RLIM_INFINITY)
 		rlim = ~0;
-
-	gr_learn_resource(current, RLIMIT_DATA, ex.a_data + ex.a_bss, 1);
 	if (ex.a_data + ex.a_bss > rlim)
 		return -ENOMEM;
 
@@ -268,27 +257,6 @@ static int load_aout_binary(struct linux_binprm * bprm)
 
 	install_exec_creds(bprm);
 
-#if defined(CONFIG_PAX_NOEXEC) || defined(CONFIG_PAX_ASLR)
-	current->mm->pax_flags = 0UL;
-#endif
-
-#ifdef CONFIG_PAX_PAGEEXEC
-	if (!(N_FLAGS(ex) & F_PAX_PAGEEXEC)) {
-		current->mm->pax_flags |= MF_PAX_PAGEEXEC;
-
-#ifdef CONFIG_PAX_EMUTRAMP
-		if (N_FLAGS(ex) & F_PAX_EMUTRAMP)
-			current->mm->pax_flags |= MF_PAX_EMUTRAMP;
-#endif
-
-#ifdef CONFIG_PAX_MPROTECT
-		if (!(N_FLAGS(ex) & F_PAX_MPROTECT))
-			current->mm->pax_flags |= MF_PAX_MPROTECT;
-#endif
-
-	}
-#endif
-
 	if (N_MAGIC(ex) == OMAGIC) {
 		unsigned long text_addr, map_size;
 		loff_t pos;
@@ -303,7 +271,7 @@ static int load_aout_binary(struct linux_binprm * bprm)
 		map_size = ex.a_text+ex.a_data;
 #endif
 		error = vm_brk(text_addr & PAGE_MASK, map_size);
-		if (error != (text_addr & PAGE_MASK))
+		if (error)
 			return error;
 
 		error = read_code(bprm->file, text_addr, pos,
@@ -325,7 +293,10 @@ static int load_aout_binary(struct linux_binprm * bprm)
 		}
 
 		if (!bprm->file->f_op->mmap||((fd_offset & ~PAGE_MASK) != 0)) {
-			vm_brk(N_TXTADDR(ex), ex.a_text+ex.a_data);
+			error = vm_brk(N_TXTADDR(ex), ex.a_text+ex.a_data);
+			if (error)
+				return error;
+
 			read_code(bprm->file, N_TXTADDR(ex), fd_offset,
 				  ex.a_text + ex.a_data);
 			goto beyond_if;
@@ -340,7 +311,7 @@ static int load_aout_binary(struct linux_binprm * bprm)
 			return error;
 
 		error = vm_mmap(bprm->file, N_DATADDR(ex), ex.a_data,
-				PROT_READ | PROT_WRITE,
+				PROT_READ | PROT_WRITE | PROT_EXEC,
 				MAP_FIXED | MAP_PRIVATE | MAP_DENYWRITE | MAP_EXECUTABLE,
 				fd_offset + ex.a_text);
 		if (error != N_DATADDR(ex))
@@ -406,8 +377,10 @@ static int load_aout_library(struct file *file)
 			       "N_TXTOFF is not page aligned. Please convert library: %pD\n",
 			       file);
 		}
-		vm_brk(start_addr, ex.a_text + ex.a_data + ex.a_bss);
-		
+		retval = vm_brk(start_addr, ex.a_text + ex.a_data + ex.a_bss);
+		if (retval)
+			goto out;
+
 		read_code(file, start_addr, N_TXTOFF(ex),
 			  ex.a_text + ex.a_data);
 		retval = 0;
@@ -425,9 +398,8 @@ static int load_aout_library(struct file *file)
 	len = PAGE_ALIGN(ex.a_text + ex.a_data);
 	bss = ex.a_text + ex.a_data + ex.a_bss;
 	if (bss > len) {
-		error = vm_brk(start_addr + len, bss - len);
-		retval = error;
-		if (error != start_addr + len)
+		retval = vm_brk(start_addr + len, bss - len);
+		if (retval)
 			goto out;
 	}
 	retval = 0;

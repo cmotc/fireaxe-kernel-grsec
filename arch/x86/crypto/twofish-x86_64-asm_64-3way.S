@@ -21,7 +21,6 @@
  */
 
 #include <linux/linkage.h>
-#include <asm/alternative-asm.h>
 
 .file "twofish-x86_64-asm-3way.S"
 .text
@@ -259,7 +258,6 @@ ENTRY(__twofish_enc_blk_3way)
 	popq %r13;
 	popq %r14;
 	popq %r15;
-	pax_force_retaddr
 	ret;
 
 .L__enc_xor3:
@@ -271,11 +269,10 @@ ENTRY(__twofish_enc_blk_3way)
 	popq %r13;
 	popq %r14;
 	popq %r15;
-	pax_force_retaddr
 	ret;
 ENDPROC(__twofish_enc_blk_3way)
 
-RAP_ENTRY(twofish_dec_blk_3way)
+ENTRY(twofish_dec_blk_3way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst
@@ -311,6 +308,5 @@ RAP_ENTRY(twofish_dec_blk_3way)
 	popq %r13;
 	popq %r14;
 	popq %r15;
-	pax_force_retaddr
 	ret;
 ENDPROC(twofish_dec_blk_3way)

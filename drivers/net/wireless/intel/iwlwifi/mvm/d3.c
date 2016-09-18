@@ -258,7 +258,7 @@ static void iwl_mvm_wowlan_program_keys(struct ieee80211_hw *hw,
 
 			rx_p1ks = data->tkip->rx_uni;
 
-			pn64 = atomic64_read_unchecked(&key->tx_pn);
+			pn64 = atomic64_read(&key->tx_pn);
 			tkip_tx_sc->iv16 = cpu_to_le16(TKIP_PN_TO_IV16(pn64));
 			tkip_tx_sc->iv32 = cpu_to_le32(TKIP_PN_TO_IV32(pn64));
 
@@ -313,7 +313,7 @@ static void iwl_mvm_wowlan_program_keys(struct ieee80211_hw *hw,
 			aes_sc = data->rsc_tsc->all_tsc_rsc.aes.unicast_rsc;
 			aes_tx_sc = &data->rsc_tsc->all_tsc_rsc.aes.tsc;
 
-			pn64 = atomic64_read_unchecked(&key->tx_pn);
+			pn64 = atomic64_read(&key->tx_pn);
 			aes_tx_sc->pn = cpu_to_le64(pn64);
 		} else {
 			aes_sc = data->rsc_tsc->all_tsc_rsc.aes.multicast_rsc;
@@ -723,7 +723,7 @@ static int iwl_mvm_d3_reprogram(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 		return -EIO;
 	}
 
-	ret = iwl_mvm_sta_send_to_fw(mvm, ap_sta, false);
+	ret = iwl_mvm_sta_send_to_fw(mvm, ap_sta, false, 0);
 	if (ret)
 		return ret;
 	rcu_assign_pointer(mvm->fw_id_to_mac_id[mvmvif->ap_sta_id], ap_sta);
@@ -1610,12 +1610,12 @@ static void iwl_mvm_d3_update_keys(struct ieee80211_hw *hw,
 		case WLAN_CIPHER_SUITE_CCMP:
 			iwl_mvm_set_aes_rx_seq(data->mvm, sc->aes.unicast_rsc,
 					       sta, key);
-			atomic64_set_unchecked(&key->tx_pn, le64_to_cpu(sc->aes.tsc.pn));
+			atomic64_set(&key->tx_pn, le64_to_cpu(sc->aes.tsc.pn));
 			break;
 		case WLAN_CIPHER_SUITE_TKIP:
 			iwl_mvm_tkip_sc_to_seq(&sc->tkip.tsc, &seq);
 			iwl_mvm_set_tkip_rx_seq(sc->tkip.unicast_rsc, key);
-			atomic64_set_unchecked(&key->tx_pn,
+			atomic64_set(&key->tx_pn,
 				     (u64)seq.tkip.iv16 |
 				     ((u64)seq.tkip.iv32 << 16));
 			break;
@@ -1804,7 +1804,6 @@ static bool iwl_mvm_query_wakeup_reasons(struct iwl_mvm *mvm,
 	struct iwl_wowlan_status *fw_status;
 	int i;
 	bool keep;
-	struct ieee80211_sta *ap_sta;
 	struct iwl_mvm_sta *mvm_ap_sta;
 
 	fw_status = iwl_mvm_get_wakeup_status(mvm, vif);
@@ -1823,13 +1822,10 @@ static bool iwl_mvm_query_wakeup_reasons(struct iwl_mvm *mvm,
 	status.wake_packet = fw_status->wake_packet;
 
 	/* still at hard-coded place 0 for D3 image */
-	ap_sta = rcu_dereference_protected(
-			mvm->fw_id_to_mac_id[0],
-			lockdep_is_held(&mvm->mutex));
-	if (IS_ERR_OR_NULL(ap_sta))
+	mvm_ap_sta = iwl_mvm_sta_from_staid_protected(mvm, 0);
+	if (!mvm_ap_sta)
 		goto out_free;
 
-	mvm_ap_sta = iwl_mvm_sta_from_mac80211(ap_sta);
 	for (i = 0; i < IWL_MAX_TID_COUNT; i++) {
 		u16 seq = status.qos_seq_ctr[i];
 		/* firmware stores last-used value, we store next value */

@@ -49,7 +49,7 @@ static inline void generic_apic_probe(void)
 
 #ifdef CONFIG_X86_LOCAL_APIC
 
-extern int apic_verbosity;
+extern unsigned int apic_verbosity;
 extern int local_apic_timer_c2_ok;
 
 extern int disable_apic;
@@ -239,10 +239,10 @@ extern void __init check_x2apic(void);
 extern void x2apic_setup(void);
 static inline int x2apic_enabled(void)
 {
-	return cpu_has_x2apic && apic_is_x2apic_enabled();
+	return boot_cpu_has(X86_FEATURE_X2APIC) && apic_is_x2apic_enabled();
 }
 
-#define x2apic_supported()	(cpu_has_x2apic)
+#define x2apic_supported()	(boot_cpu_has(X86_FEATURE_X2APIC))
 #else /* !CONFIG_X86_X2APIC */
 static inline void check_x2apic(void) { }
 static inline void x2apic_setup(void) { }

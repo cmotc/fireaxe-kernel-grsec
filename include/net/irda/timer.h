@@ -72,10 +72,12 @@ struct lap_cb;
 
 #define WATCHDOG_TIMEOUT        (20*HZ)       /* 20 sec */
 
+typedef void (*TIMER_CALLBACK)(void *);
+
 static inline void irda_start_timer(struct timer_list *ptimer, int timeout, 
-				    void* data, void (*callback)(unsigned long))
+				    void* data, TIMER_CALLBACK callback)
 {
-	ptimer->function = callback;
+	ptimer->function = (void (*)(unsigned long)) callback;
 	ptimer->data = (unsigned long) data;
 	
 	/* Set new value for timer (update or add timer).

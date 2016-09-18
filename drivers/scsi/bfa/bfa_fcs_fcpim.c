@@ -60,7 +60,7 @@ static void	bfa_fcs_itnim_sm_hcb_offline(struct bfa_fcs_itnim_s *itnim,
 static void	bfa_fcs_itnim_sm_initiator(struct bfa_fcs_itnim_s *itnim,
 					   enum bfa_fcs_itnim_event event);
 
-static struct itnim_sm_table_s itnim_sm_table[] = {
+static struct bfa_sm_table_s itnim_sm_table[] = {
 	{BFA_SM(bfa_fcs_itnim_sm_offline), BFA_ITNIM_OFFLINE},
 	{BFA_SM(bfa_fcs_itnim_sm_prli_send), BFA_ITNIM_PRLI_SEND},
 	{BFA_SM(bfa_fcs_itnim_sm_prli), BFA_ITNIM_PRLI_SENT},
@@ -588,12 +588,13 @@ bfa_fcs_itnim_create(struct bfa_fcs_rport_s *rport)
 	struct bfa_fcs_lport_s *port = rport->port;
 	struct bfa_fcs_itnim_s *itnim;
 	struct bfad_itnim_s   *itnim_drv;
+	int ret;
 
 	/*
 	 * call bfad to allocate the itnim
 	 */
-	bfa_fcb_itnim_alloc(port->fcs->bfad, &itnim, &itnim_drv);
-	if (itnim == NULL) {
+	ret = bfa_fcb_itnim_alloc(port->fcs->bfad, &itnim, &itnim_drv);
+	if (ret) {
 		bfa_trc(port->fcs, rport->pwwn);
 		return NULL;
 	}
@@ -672,7 +673,7 @@ bfa_status_t
 bfa_fcs_itnim_get_online_state(struct bfa_fcs_itnim_s *itnim)
 {
 	bfa_trc(itnim->fcs, itnim->rport->pid);
-	switch (itnim_sm_to_state(itnim_sm_table, itnim->sm)) {
+	switch (bfa_sm_to_state(itnim_sm_table, itnim->sm)) {
 	case BFA_ITNIM_ONLINE:
 	case BFA_ITNIM_INITIATIOR:
 		return BFA_STATUS_OK;
@@ -772,7 +773,7 @@ bfa_fcs_itnim_attr_get(struct bfa_fcs_lport_s *port, wwn_t rpwwn,
 	if (itnim == NULL)
 		return BFA_STATUS_NO_FCPIM_NEXUS;
 
-	attr->state	    = itnim_sm_to_state(itnim_sm_table, itnim->sm);
+	attr->state	    = bfa_sm_to_state(itnim_sm_table, itnim->sm);
 	attr->retry	    = itnim->seq_rec;
 	attr->rec_support   = itnim->rec_support;
 	attr->conf_comp	    = itnim->conf_comp;

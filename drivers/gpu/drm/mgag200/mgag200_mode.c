@@ -182,7 +182,7 @@ static int mga_g200se_set_plls(struct mga_device *mdev, long clock)
 			}
 		}
 
-		fvv = pllreffreq * testn / testm;
+		fvv = pllreffreq * (n + 1) / (m + 1);
 		fvv = (fvv - 800000) / 50000;
 
 		if (fvv > 15)
@@ -202,6 +202,14 @@ static int mga_g200se_set_plls(struct mga_device *mdev, long clock)
 	WREG_DAC(MGA1064_PIX_PLLC_M, m);
 	WREG_DAC(MGA1064_PIX_PLLC_N, n);
 	WREG_DAC(MGA1064_PIX_PLLC_P, p);
+
+	if (mdev->unique_rev_id >= 0x04) {
+		WREG_DAC(0x1a, 0x09);
+		msleep(20);
+		WREG_DAC(0x1a, 0x01);
+
+	}
+
 	return 0;
 }
 
@@ -1565,7 +1573,7 @@ static uint32_t mga_vga_calculate_mode_bandwidth(struct drm_display_mode *mode,
 
 #define MODE_BANDWIDTH	MODE_BAD
 
-static enum drm_mode_status mga_vga_mode_valid(struct drm_connector *connector,
+static int mga_vga_mode_valid(struct drm_connector *connector,
 				 struct drm_display_mode *mode)
 {
 	struct drm_device *dev = connector->dev;

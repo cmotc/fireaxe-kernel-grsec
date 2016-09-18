@@ -31,7 +31,6 @@
 #include <linux/export.h>
 #include <linux/string.h>
 #include <linux/thermal.h>
-#include <linux/mm.h>
 
 #include "thermal_core.h"
 
@@ -332,6 +331,14 @@ static int of_thermal_set_trip_temp(struct thermal_zone_device *tz, int trip,
 	if (trip >= data->ntrips || trip < 0)
 		return -EDOM;
 
+	if (data->ops->set_trip_temp) {
+		int ret;
+
+		ret = data->ops->set_trip_temp(data->sensor_data, trip, temp);
+		if (ret)
+			return ret;
+	}
+
 	/* thermal framework should take care of data->mask & (1 << trip) */
 	data->trips[trip].temperature = temp;
 
@@ -418,11 +425,9 @@ thermal_zone_of_add_sensor(struct device_node *zone,
 	tz->ops = ops;
 	tz->sensor_data = data;
 
-	pax_open_kernel();
-	const_cast(tzd->ops->get_temp) = of_thermal_get_temp;
-	const_cast(tzd->ops->get_trend) = of_thermal_get_trend;
-	const_cast(tzd->ops->set_emul_temp) = of_thermal_set_emul_temp;
-	pax_close_kernel();
+	tzd->ops->get_temp = of_thermal_get_temp;
+	tzd->ops->get_trend = of_thermal_get_trend;
+	tzd->ops->set_emul_temp = of_thermal_set_emul_temp;
 	mutex_unlock(&tzd->lock);
 
 	return tzd;
@@ -548,11 +553,9 @@ void thermal_zone_of_sensor_unregister(struct device *dev,
 		return;
 
 	mutex_lock(&tzd->lock);
-	pax_open_kernel();
-	const_cast(tzd->ops->get_temp) = NULL;
-	const_cast(tzd->ops->get_trend) = NULL;
-	const_cast(tzd->ops->set_emul_temp) = NULL;
-	pax_close_kernel();
+	tzd->ops->get_temp = NULL;
+	tzd->ops->get_trend = NULL;
+	tzd->ops->set_emul_temp = NULL;
 
 	tz->ops = NULL;
 	tz->sensor_data = NULL;
@@ -911,7 +914,7 @@ finish:
 	return tz;
 
 free_tbps:
-	for (i = 0; i < tz->num_tbps; i++)
+	for (i = i - 1; i >= 0; i--)
 		of_node_put(tz->tbps[i].cooling_device);
 	kfree(tz->tbps);
 free_trips:

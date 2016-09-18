@@ -109,7 +109,7 @@ static int kfd_open(struct inode *inode, struct file *filep)
 
 	is_32bit_user_mode = in_compat_syscall();
 
-	if (is_32bit_user_mode == true) {
+	if (is_32bit_user_mode) {
 		dev_warn(kfd_device,
 			"Process %d (32-bit) failed to open /dev/kfd\n"
 			"32-bit processes are not supported by amdkfd\n",
@@ -131,12 +131,11 @@ static int kfd_ioctl_get_version(struct file *filep, struct kfd_process *p,
 					void *data)
 {
 	struct kfd_ioctl_get_version_args *args = data;
-	int err = 0;
 
 	args->major_version = KFD_IOCTL_MAJOR_VERSION;
 	args->minor_version = KFD_IOCTL_MINOR_VERSION;
 
-	return err;
+	return 0;
 }
 
 static int set_queue_properties_from_user(struct queue_properties *q_properties,
@@ -419,7 +418,7 @@ static int kfd_ioctl_set_memory_policy(struct file *filep,
 		(args->alternate_policy == KFD_IOC_CACHE_POLICY_COHERENT)
 		   ? cache_policy_coherent : cache_policy_noncoherent;
 
-	if (!dev->dqm->ops->set_cache_memory_policy(dev->dqm,
+	if (!dev->dqm->ops.set_cache_memory_policy(dev->dqm,
 				&pdd->qpd,
 				default_policy,
 				alternate_policy,

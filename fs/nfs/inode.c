@@ -282,6 +282,7 @@ nfs_init_locked(struct inode *inode, void *opaque)
 	struct nfs_fattr	*fattr = desc->fattr;
 
 	set_nfs_fileid(inode, fattr->fileid);
+	inode->i_mode = fattr->mode;
 	nfs_copy_fh(NFS_FH(inode), desc->fh);
 	return 0;
 }
@@ -1318,16 +1319,16 @@ static int nfs_check_inode_attributes(struct inode *inode, struct nfs_fattr *fat
 	return 0;
 }
 
-static atomic_long_unchecked_t nfs_attr_generation_counter;
+static atomic_long_t nfs_attr_generation_counter;
 
 static unsigned long nfs_read_attr_generation_counter(void)
 {
-	return atomic_long_read_unchecked(&nfs_attr_generation_counter);
+	return atomic_long_read(&nfs_attr_generation_counter);
 }
 
 unsigned long nfs_inc_attr_generation_counter(void)
 {
-	return atomic_long_inc_return_unchecked(&nfs_attr_generation_counter);
+	return atomic_long_inc_return(&nfs_attr_generation_counter);
 }
 EXPORT_SYMBOL_GPL(nfs_inc_attr_generation_counter);
 
@@ -1958,9 +1959,7 @@ static void init_once(void *foo)
 	nfsi->nrequests = 0;
 	nfsi->commit_info.ncommit = 0;
 	atomic_set(&nfsi->commit_info.rpcs_out, 0);
-	atomic_set(&nfsi->silly_count, 1);
-	INIT_HLIST_HEAD(&nfsi->silly_list);
-	init_waitqueue_head(&nfsi->waitqueue);
+	init_rwsem(&nfsi->rmdir_sem);
 	nfs4_init_once(nfsi);
 }
 

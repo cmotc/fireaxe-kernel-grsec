@@ -508,14 +508,7 @@ int rcu_read_lock_bh_held(void);
  * CONFIG_DEBUG_LOCK_ALLOC, this assumes we are in an RCU-sched read-side
  * critical section unless it can prove otherwise.
  */
-#ifdef CONFIG_PREEMPT_COUNT
 int rcu_read_lock_sched_held(void);
-#else /* #ifdef CONFIG_PREEMPT_COUNT */
-static inline int rcu_read_lock_sched_held(void)
-{
-	return 1;
-}
-#endif /* #else #ifdef CONFIG_PREEMPT_COUNT */
 
 #else /* #ifdef CONFIG_DEBUG_LOCK_ALLOC */
 
@@ -532,18 +525,10 @@ static inline int rcu_read_lock_bh_held(void)
 	return 1;
 }
 
-#ifdef CONFIG_PREEMPT_COUNT
 static inline int rcu_read_lock_sched_held(void)
 {
-	return preempt_count() != 0 || irqs_disabled();
+	return !preemptible();
 }
-#else /* #ifdef CONFIG_PREEMPT_COUNT */
-static inline int rcu_read_lock_sched_held(void)
-{
-	return 1;
-}
-#endif /* #else #ifdef CONFIG_PREEMPT_COUNT */
-
 #endif /* #else #ifdef CONFIG_DEBUG_LOCK_ALLOC */
 
 #ifdef CONFIG_PROVE_RCU
@@ -863,7 +848,6 @@ static inline void rcu_preempt_sleep_check(void)
  * read-side critical sections may be preempted and they may also block, but
  * only when acquiring spinlocks that are subject to priority inheritance.
  */
-static inline void rcu_read_lock(void) __acquires(RCU);
 static inline void rcu_read_lock(void)
 {
 	__rcu_read_lock();
@@ -918,7 +902,6 @@ static inline void rcu_read_lock(void)
  *
  * See rcu_read_lock() for more information.
  */
-static inline void rcu_read_unlock(void) __releases(RCU);
 static inline void rcu_read_unlock(void)
 {
 	RCU_LOCKDEP_WARN(!rcu_is_watching(),
@@ -945,7 +928,6 @@ static inline void rcu_read_unlock(void)
  * rcu_read_unlock_bh() from one task if the matching rcu_read_lock_bh()
  * was invoked from some other task.
  */
-static inline void rcu_read_lock_bh(void) __acquires(RCU_BH);
 static inline void rcu_read_lock_bh(void)
 {
 	local_bh_disable();
@@ -960,7 +942,6 @@ static inline void rcu_read_lock_bh(void)
  *
  * See rcu_read_lock_bh() for more information.
  */
-static inline void rcu_read_unlock_bh(void) __releases(RCU_BH);
 static inline void rcu_read_unlock_bh(void)
 {
 	RCU_LOCKDEP_WARN(!rcu_is_watching(),
@@ -983,7 +964,6 @@ static inline void rcu_read_unlock_bh(void)
  * rcu_read_unlock_sched() from process context if the matching
  * rcu_read_lock_sched() was invoked from an NMI handler.
  */
-static inline void rcu_read_lock_sched(void) __acquires(RCU_SCHED);
 static inline void rcu_read_lock_sched(void)
 {
 	preempt_disable();
@@ -994,7 +974,6 @@ static inline void rcu_read_lock_sched(void)
 }
 
 /* Used by lockdep and tracing: cannot be traced, cannot call lockdep. */
-static inline notrace void rcu_read_lock_sched_notrace(void) __acquires(RCU_SCHED);
 static inline notrace void rcu_read_lock_sched_notrace(void)
 {
 	preempt_disable_notrace();
@@ -1006,7 +985,6 @@ static inline notrace void rcu_read_lock_sched_notrace(void)
  *
  * See rcu_read_lock_sched for more information.
  */
-static inline void rcu_read_unlock_sched(void) __releases(RCU_SCHED);
 static inline void rcu_read_unlock_sched(void)
 {
 	RCU_LOCKDEP_WARN(!rcu_is_watching(),
@@ -1017,7 +995,6 @@ static inline void rcu_read_unlock_sched(void)
 }
 
 /* Used by lockdep and tracing: cannot be traced, cannot call lockdep. */
-static inline notrace void rcu_read_unlock_sched_notrace(void) __releases(RCU_SCHED);
 static inline notrace void rcu_read_unlock_sched_notrace(void)
 {
 	__release(RCU_SCHED);
@@ -1150,6 +1127,19 @@ static inline void rcu_sysidle_force_exit(void)
 }
 
 #endif /* #else #ifdef CONFIG_NO_HZ_FULL_SYSIDLE */
+
+
+/*
+ * Dump the ftrace buffer, but only one time per callsite per boot.
+ */
+#define rcu_ftrace_dump(oops_dump_mode) \
+do { \
+	static atomic_t ___rfd_beenhere = ATOMIC_INIT(0); \
+	\
+	if (!atomic_read(&___rfd_beenhere) && \
+	    !atomic_xchg(&___rfd_beenhere, 1)) \
+		ftrace_dump(oops_dump_mode); \
+} while (0)
 
 
 #endif /* __LINUX_RCUPDATE_H */

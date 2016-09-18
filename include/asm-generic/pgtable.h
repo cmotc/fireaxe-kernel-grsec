@@ -757,22 +757,6 @@ static inline int pmd_protnone(pmd_t pmd)
 }
 #endif /* CONFIG_NUMA_BALANCING */
 
-#ifndef __HAVE_ARCH_PAX_OPEN_KERNEL
-#ifdef CONFIG_PAX_KERNEXEC
-#error KERNEXEC requires pax_open_kernel
-#else
-static inline unsigned long pax_open_kernel(void) { return 0; }
-#endif
-#endif
-
-#ifndef __HAVE_ARCH_PAX_CLOSE_KERNEL
-#ifdef CONFIG_PAX_KERNEXEC
-#error KERNEXEC requires pax_close_kernel
-#else
-static inline unsigned long pax_close_kernel(void) { return 0; }
-#endif
-#endif
-
 #endif /* CONFIG_MMU */
 
 #ifdef CONFIG_HAVE_ARCH_HUGE_VMAP
@@ -820,6 +804,14 @@ static inline int pmd_clear_huge(pmd_t *pmd)
 
 #ifndef io_remap_pfn_range
 #define io_remap_pfn_range remap_pfn_range
+#endif
+
+#ifndef has_transparent_hugepage
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+#define has_transparent_hugepage() 1
+#else
+#define has_transparent_hugepage() 0
+#endif
 #endif
 
 #endif /* _ASM_GENERIC_PGTABLE_H */

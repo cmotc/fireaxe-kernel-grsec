@@ -24,8 +24,6 @@
 #include <linux/msi.h>
 #include <linux/slab.h>
 
-#include <asm/pgtable.h>
-
 #define DEV_ID_SHIFT	21
 #define MAX_DEV_MSIS	(1 << (32 - DEV_ID_SHIFT))
 
@@ -83,12 +81,10 @@ static void platform_msi_update_dom_ops(struct msi_domain_info *info)
 
 	BUG_ON(!ops);
 
-	pax_open_kernel();
 	if (ops->msi_init == NULL)
-		const_cast(ops->msi_init) = platform_msi_init;
+		ops->msi_init = platform_msi_init;
 	if (ops->set_desc == NULL)
-		const_cast(ops->set_desc) = platform_msi_set_desc;
-	pax_close_kernel();
+		ops->set_desc = platform_msi_set_desc;
 }
 
 static void platform_msi_write_msg(struct irq_data *data, struct msi_msg *msg)
@@ -106,18 +102,16 @@ static void platform_msi_update_chip_ops(struct msi_domain_info *info)
 	struct irq_chip *chip = info->chip;
 
 	BUG_ON(!chip);
-	pax_open_kernel();
 	if (!chip->irq_mask)
-		const_cast(chip->irq_mask) = irq_chip_mask_parent;
+		chip->irq_mask = irq_chip_mask_parent;
 	if (!chip->irq_unmask)
-		const_cast(chip->irq_unmask) = irq_chip_unmask_parent;
+		chip->irq_unmask = irq_chip_unmask_parent;
 	if (!chip->irq_eoi)
-		const_cast(chip->irq_eoi) = irq_chip_eoi_parent;
+		chip->irq_eoi = irq_chip_eoi_parent;
 	if (!chip->irq_set_affinity)
-		const_cast(chip->irq_set_affinity) = msi_domain_set_affinity;
+		chip->irq_set_affinity = msi_domain_set_affinity;
 	if (!chip->irq_write_msi_msg)
-		const_cast(chip->irq_write_msi_msg) = platform_msi_write_msg;
-	pax_close_kernel();
+		chip->irq_write_msi_msg = platform_msi_write_msg;
 }
 
 static void platform_msi_free_descs(struct device *dev, int base, int nvec)

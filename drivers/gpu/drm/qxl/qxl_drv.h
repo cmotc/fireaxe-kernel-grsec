@@ -292,10 +292,10 @@ struct qxl_device {
 	unsigned int last_sent_io_cmd;
 
 	/* interrupt handling */
-	atomic_unchecked_t irq_received;
-	atomic_unchecked_t irq_received_display;
-	atomic_unchecked_t irq_received_cursor;
-	atomic_unchecked_t irq_received_io_cmd;
+	atomic_t irq_received;
+	atomic_t irq_received_display;
+	atomic_t irq_received_cursor;
+	atomic_t irq_received_io_cmd;
 	unsigned irq_received_error;
 	wait_queue_head_t display_event;
 	wait_queue_head_t cursor_event;
@@ -323,8 +323,6 @@ struct qxl_device {
 
 	struct workqueue_struct *gc_queue;
 	struct work_struct gc_work;
-
-	struct work_struct fb_work;
 
 	struct drm_property *hotplug_mode_update_property;
 	int monitors_config_width;
@@ -389,11 +387,13 @@ int qxl_get_handle_for_primary_fb(struct qxl_device *qdev,
 void qxl_fbdev_set_suspend(struct qxl_device *qdev, int state);
 
 /* qxl_display.c */
+void qxl_user_framebuffer_destroy(struct drm_framebuffer *fb);
 int
 qxl_framebuffer_init(struct drm_device *dev,
 		     struct qxl_framebuffer *rfb,
 		     const struct drm_mode_fb_cmd2 *mode_cmd,
-		     struct drm_gem_object *obj);
+		     struct drm_gem_object *obj,
+		     const struct drm_framebuffer_funcs *funcs);
 void qxl_display_read_client_monitors_config(struct qxl_device *qdev);
 void qxl_send_monitors_config(struct qxl_device *qdev);
 int qxl_create_monitors_object(struct qxl_device *qdev);
@@ -553,7 +553,6 @@ int qxl_irq_init(struct qxl_device *qdev);
 irqreturn_t qxl_irq_handler(int irq, void *arg);
 
 /* qxl_fb.c */
-int qxl_fb_init(struct qxl_device *qdev);
 bool qxl_fbdev_qobj_is_fb(struct qxl_device *qdev, struct qxl_bo *qobj);
 
 int qxl_debugfs_add_files(struct qxl_device *qdev,

@@ -137,7 +137,7 @@ void ima_add_violation(struct file *file, const unsigned char *filename,
 	int result;
 
 	/* can overflow, only indicator */
-	atomic_long_inc_unchecked(&ima_htable.violations);
+	atomic_long_inc(&ima_htable.violations);
 
 	result = ima_alloc_init_template(&event_data, &entry);
 	if (result < 0) {
@@ -313,7 +313,7 @@ void ima_audit_measurement(struct integrity_iint_cache *iint,
 	iint->flags |= IMA_AUDITED;
 }
 
-const char *ima_d_path(struct path *path, char **pathbuf)
+const char *ima_d_path(const struct path *path, char **pathbuf)
 {
 	char *pathname = NULL;
 

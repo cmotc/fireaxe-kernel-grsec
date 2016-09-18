@@ -160,8 +160,6 @@ struct bfa_fcxp_rsp_info_s {
 	u32	rsp_maxlen;	/*  max response length expected */
 };
 
-typedef void (*bfa_sm_t)(void *sm, int event);
-
 struct bfa_fcxp_s {
 	struct list_head	qe;		/*  fcxp queue element */
 	bfa_sm_t	sm;		/*  state machine */
@@ -297,11 +295,9 @@ struct bfa_rport_info_s {
 /*
  * BFA rport data structure
  */
-enum bfa_rport_event;
-
 struct bfa_rport_s {
 	struct list_head	qe;	/*  queue element		    */
-	void (*sm)(struct bfa_rport_s *, enum bfa_rport_event);/*  state machine		    */
+	bfa_sm_t	sm;		/*  state machine		    */
 	struct bfa_s	*bfa;		/*  backpointer to BFA		    */
 	void		*rport_drv;	/*  fcs/driver rport object	    */
 	u16	fw_handle;	/*  firmware rport handle	    */
@@ -392,12 +388,10 @@ void	bfa_uf_res_recfg(struct bfa_s *bfa, u16 num_uf_fw);
 /*
  * LPS - bfa lport login/logout service interface
  */
-enum bfa_lps_event;
-
 struct bfa_lps_s {
 	struct list_head	qe;	/*  queue element		*/
 	struct bfa_s	*bfa;		/*  parent bfa instance	*/
-	void (*sm)(struct bfa_lps_s *, enum bfa_lps_event);/*  finite state machine	*/
+	bfa_sm_t	sm;		/*  finite state machine	*/
 	u8		bfa_tag;	/*  lport tag		*/
 	u8		fw_tag;		/*  lport fw tag                */
 	u8		reqq;		/*  lport request queue	*/
@@ -456,11 +450,9 @@ void	bfa_lps_isr(struct bfa_s *bfa, struct bfi_msg_s *msg);
 /*
  * Link notification data structure
  */
-enum bfa_fcport_ln_sm_event;
-
 struct bfa_fcport_ln_s {
 	struct bfa_fcport_s	*fcport;
-	void (*sm)(struct bfa_fcport_ln_s *, enum bfa_fcport_ln_sm_event);
+	bfa_sm_t		sm;
 	struct bfa_cb_qe_s	ln_qe;	/*  BFA callback queue elem for ln */
 	enum bfa_port_linkstate ln_event; /*  ln event for callback */
 };
@@ -474,7 +466,7 @@ struct bfa_fcport_trunk_s {
  */
 struct bfa_fcport_s {
 	struct bfa_s		*bfa;	/*  parent BFA instance */
-	void (*sm)(struct bfa_fcport_s *, enum bfa_fcport_sm_event);	/*  port state machine */
+	bfa_sm_t		sm;	/*  port state machine */
 	wwn_t			nwwn;	/*  node wwn of physical port */
 	wwn_t			pwwn;	/*  port wwn of physical oprt */
 	enum bfa_port_speed speed_sup;
@@ -722,11 +714,9 @@ struct bfa_fcdiag_lb_s {
 	u32        status;
 };
 
-enum bfa_dport_sm_event;
-
 struct bfa_dport_s {
 	struct bfa_s	*bfa;		/* Back pointer to BFA	*/
-	void (*sm)(struct bfa_dport_s *, enum bfa_dport_sm_event);/* finite state machine */
+	bfa_sm_t	sm;		/* finite state machine */
 	struct bfa_reqq_wait_s reqq_wait;
 	bfa_cb_diag_t	cbfn;
 	void		*cbarg;

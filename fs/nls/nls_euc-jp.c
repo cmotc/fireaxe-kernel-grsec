@@ -406,7 +406,7 @@ static inline int sjisnec2sjisibm(unsigned char *sjisibm,
 	return 2;
 }
 
-static int uni2char(wchar_t uni,
+static int uni2char(const wchar_t uni,
 		    unsigned char *out, int boundlen)
 {
 	int n;
@@ -560,10 +560,8 @@ static int __init init_nls_euc_jp(void)
 	p_nls = load_nls("cp932");
 
 	if (p_nls) {
-		pax_open_kernel();
-		const_cast(table.charset2upper) = p_nls->charset2upper;
-		const_cast(table.charset2lower) = p_nls->charset2lower;
-		pax_close_kernel();
+		table.charset2upper = p_nls->charset2upper;
+		table.charset2lower = p_nls->charset2lower;
 		return register_nls(&table);
 	}
 

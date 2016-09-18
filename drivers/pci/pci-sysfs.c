@@ -1014,6 +1014,9 @@ static int pci_mmap_resource(struct kobject *kobj, struct bin_attribute *attr,
 	if (i >= PCI_ROM_RESOURCE)
 		return -ENODEV;
 
+	if (res->flags & IORESOURCE_MEM && iomem_is_exclusive(res->start))
+		return -EINVAL;
+
 	if (!pci_mmap_fits(pdev, i, vma, PCI_MMAP_SYSFS)) {
 		WARN(1, "process \"%s\" tried to map 0x%08lx bytes at page 0x%08lx on %s BAR %d (start 0x%16Lx, size 0x%16Lx)\n",
 			current->comm, vma->vm_end-vma->vm_start, vma->vm_pgoff,
@@ -1030,10 +1033,6 @@ static int pci_mmap_resource(struct kobject *kobj, struct bin_attribute *attr,
 	pci_resource_to_user(pdev, i, res, &start, &end);
 	vma->vm_pgoff += start >> PAGE_SHIFT;
 	mmap_type = res->flags & IORESOURCE_MEM ? pci_mmap_mem : pci_mmap_io;
-
-	if (res->flags & IORESOURCE_MEM && iomem_is_exclusive(start))
-		return -EINVAL;
-
 	return pci_mmap_page_range(pdev, vma, mmap_type, write_combine);
 }
 
@@ -1146,7 +1145,7 @@ static int pci_create_attr(struct pci_dev *pdev, int num, int write_combine)
 {
 	/* allocate attribute structure, piggyback attribute name */
 	int name_len = write_combine ? 13 : 10;
-	bin_attribute_no_const *res_attr;
+	struct bin_attribute *res_attr;
 	char *res_attr_name;
 	int retval;
 
@@ -1326,7 +1325,7 @@ static struct device_attribute reset_attr = __ATTR(reset, 0200, NULL, reset_stor
 static int pci_create_capabilities_sysfs(struct pci_dev *dev)
 {
 	int retval;
-	bin_attribute_no_const *attr;
+	struct bin_attribute *attr;
 
 	/* If the device has VPD, try to expose it in sysfs. */
 	if (dev->vpd) {
@@ -1373,7 +1372,7 @@ int __must_check pci_create_sysfs_dev_files(struct pci_dev *pdev)
 {
 	int retval;
 	int rom_size;
-	bin_attribute_no_const *attr;
+	struct bin_attribute *attr;
 
 	if (!sysfs_initialized)
 		return -EACCES;

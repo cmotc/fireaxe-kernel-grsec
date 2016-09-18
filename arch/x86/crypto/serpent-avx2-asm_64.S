@@ -16,7 +16,6 @@
 
 #include <linux/linkage.h>
 #include <asm/frame.h>
-#include <asm/alternative-asm.h>
 #include "glue_helper-asm-avx2.S"
 
 .file "serpent-avx2-asm_64.S"
@@ -612,7 +611,6 @@ __serpent_enc_blk16:
 	write_blocks(RA1, RB1, RC1, RD1, RK0, RK1, RK2);
 	write_blocks(RA2, RB2, RC2, RD2, RK0, RK1, RK2);
 
-	pax_force_retaddr
 	ret;
 ENDPROC(__serpent_enc_blk16)
 
@@ -667,11 +665,10 @@ __serpent_dec_blk16:
 	write_blocks(RC1, RD1, RB1, RE1, RK0, RK1, RK2);
 	write_blocks(RC2, RD2, RB2, RE2, RK0, RK1, RK2);
 
-	pax_force_retaddr
 	ret;
 ENDPROC(__serpent_dec_blk16)
 
-RAP_ENTRY(serpent_ecb_enc_16way)
+ENTRY(serpent_ecb_enc_16way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst
@@ -690,11 +687,10 @@ RAP_ENTRY(serpent_ecb_enc_16way)
 	vzeroupper;
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 ENDPROC(serpent_ecb_enc_16way)
 
-RAP_ENTRY(serpent_ecb_dec_16way)
+ENTRY(serpent_ecb_dec_16way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst
@@ -713,11 +709,10 @@ RAP_ENTRY(serpent_ecb_dec_16way)
 	vzeroupper;
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 ENDPROC(serpent_ecb_dec_16way)
 
-RAP_ENTRY(serpent_cbc_dec_16way)
+ENTRY(serpent_cbc_dec_16way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst
@@ -737,11 +732,10 @@ RAP_ENTRY(serpent_cbc_dec_16way)
 	vzeroupper;
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 ENDPROC(serpent_cbc_dec_16way)
 
-RAP_ENTRY(serpent_ctr_16way)
+ENTRY(serpent_ctr_16way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst (16 blocks)
@@ -763,11 +757,10 @@ RAP_ENTRY(serpent_ctr_16way)
 	vzeroupper;
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 ENDPROC(serpent_ctr_16way)
 
-RAP_ENTRY(serpent_xts_enc_16way)
+ENTRY(serpent_xts_enc_16way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst (16 blocks)
@@ -790,11 +783,10 @@ RAP_ENTRY(serpent_xts_enc_16way)
 	vzeroupper;
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 ENDPROC(serpent_xts_enc_16way)
 
-RAP_ENTRY(serpent_xts_dec_16way)
+ENTRY(serpent_xts_dec_16way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst (16 blocks)
@@ -817,6 +809,5 @@ RAP_ENTRY(serpent_xts_dec_16way)
 	vzeroupper;
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 ENDPROC(serpent_xts_dec_16way)

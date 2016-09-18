@@ -19,7 +19,6 @@
 #include <linux/of_gpio.h>
 
 #include <linux/string.h>
-#include <linux/netdevice.h>
 #include "wilc_wlan_if.h"
 #include "wilc_wlan.h"
 #include "wilc_wfi_netdevice.h"
@@ -196,9 +195,6 @@ static int wilc_spi_tx(struct wilc *wilc, u8 *b, u32 len)
 	} else {
 		dev_err(&spi->dev,
 			"can't write data with the following length: %d\n",
-			len);
-		dev_err(&spi->dev,
-			"FAILED due to NULL buffer or ZERO length check the following length: %d\n",
 			len);
 		ret = -EINVAL;
 	}

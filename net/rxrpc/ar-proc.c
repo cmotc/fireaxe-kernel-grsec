@@ -80,7 +80,7 @@ static int rxrpc_call_seq_show(struct seq_file *seq, void *v)
 		   call->conn->in_clientflag ? "Svc" : "Clt",
 		   atomic_read(&call->usage),
 		   rxrpc_call_states[call->state],
-		   call->abort_code,
+		   call->remote_abort ?: call->local_abort,
 		   call->user_call_ID);
 
 	return 0;
@@ -164,8 +164,8 @@ static int rxrpc_connection_seq_show(struct seq_file *seq, void *v)
 		   atomic_read(&conn->usage),
 		   rxrpc_conn_states[conn->state],
 		   key_serial(conn->key),
-		   atomic_read_unchecked(&conn->serial),
-		   atomic_read_unchecked(&conn->hi_serial));
+		   atomic_read(&conn->serial),
+		   atomic_read(&conn->hi_serial));
 
 	return 0;
 }

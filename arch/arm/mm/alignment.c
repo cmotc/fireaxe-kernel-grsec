@@ -778,7 +778,6 @@ do_alignment(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 	u16 tinstr = 0;
 	int isize = 4;
 	int thumb2_32b = 0;
-	bool is_user_mode = user_mode(regs);
 
 	if (interrupts_enabled(regs))
 		local_irq_enable();
@@ -787,24 +786,14 @@ do_alignment(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 
 	if (thumb_mode(regs)) {
 		u16 *ptr = (u16 *)(instrptr & ~1);
-		if (is_user_mode) {
-			pax_open_userland();
-			fault = probe_kernel_address(ptr, tinstr);
-			pax_close_userland();
-		} else
-			fault = probe_kernel_address(ptr, tinstr);
+		fault = probe_kernel_address(ptr, tinstr);
 		tinstr = __mem_to_opcode_thumb16(tinstr);
 		if (!fault) {
 			if (cpu_architecture() >= CPU_ARCH_ARMv7 &&
 			    IS_T32(tinstr)) {
 				/* Thumb-2 32-bit */
 				u16 tinst2 = 0;
-				if (is_user_mode) {
-					pax_open_userland();
-					fault = probe_kernel_address(ptr + 1, tinst2);
-					pax_close_userland();
-				} else
-					fault = probe_kernel_address(ptr + 1, tinst2);
+				fault = probe_kernel_address(ptr + 1, tinst2);
 				tinst2 = __mem_to_opcode_thumb16(tinst2);
 				instr = __opcode_thumb32_compose(tinstr, tinst2);
 				thumb2_32b = 1;
@@ -814,12 +803,7 @@ do_alignment(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 			}
 		}
 	} else {
-		if (is_user_mode) {
-			pax_open_userland();
-			fault = probe_kernel_address((void *)instrptr, instr);
-			pax_close_userland();
-		} else
-			fault = probe_kernel_address((void *)instrptr, instr);
+		fault = probe_kernel_address((void *)instrptr, instr);
 		instr = __mem_to_opcode_arm(instr);
 	}
 
@@ -828,7 +812,7 @@ do_alignment(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 		goto bad_or_fault;
 	}
 
-	if (is_user_mode)
+	if (user_mode(regs))
 		goto user;
 
 	ai_sys += 1;

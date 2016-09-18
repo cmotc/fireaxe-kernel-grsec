@@ -56,7 +56,7 @@ static ssize_t sm_attr_show(struct device *dev, struct device_attribute *attr,
 #define SM_CIS_VENDOR_OFFSET 0x59
 static struct attribute_group *sm_create_sysfs_attributes(struct sm_ftl *ftl)
 {
-	attribute_group_no_const *attr_group;
+	struct attribute_group *attr_group;
 	struct attribute **attributes;
 	struct sm_sysfs_attribute *vendor_attribute;
 	char *vendor;
@@ -386,7 +386,7 @@ restart:
 		if (test_bit(boffset / SM_SECTOR_SIZE, &invalid_bitmap)) {
 
 			sm_printk("sector %d of block at LBA %d of zone %d"
-				" coudn't be read, marking it as invalid",
+				" couldn't be read, marking it as invalid",
 				boffset / SM_SECTOR_SIZE, lba, zone);
 
 			oob.data_status = 0;

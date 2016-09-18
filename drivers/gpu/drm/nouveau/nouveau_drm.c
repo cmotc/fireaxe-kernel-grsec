@@ -44,7 +44,7 @@
 #include <nvif/cla06f.h>
 #include <nvif/if0004.h>
 
-#include "nouveau_drm.h"
+#include "nouveau_drv.h"
 #include "nouveau_dma.h"
 #include "nouveau_ttm.h"
 #include "nouveau_gem.h"
@@ -82,8 +82,9 @@ MODULE_PARM_DESC(runpm, "disable (0), force enable (1), optimus only default (-1
 int nouveau_runtime_pm = -1;
 module_param_named(runpm, nouveau_runtime_pm, int, 0400);
 
+static struct drm_driver driver_stub;
 static struct drm_driver driver_pci;
-static drm_driver_no_const driver_platform __read_only;
+static struct drm_driver driver_platform;
 
 static u64
 nouveau_pci_name(struct pci_dev *pdev)
@@ -323,7 +324,16 @@ static int nouveau_drm_probe(struct pci_dev *pdev,
 	    !vga_switcheroo_handler_flags())
 		return -EPROBE_DEFER;
 
-	/* remove conflicting drivers (vesafb, efifb etc) */
+	/* We need to check that the chipset is supported before booting
+	 * fbdev off the hardware, as there's no way to put it back.
+	 */
+	ret = nvkm_device_pci_new(pdev, NULL, "error", true, false, 0, &device);
+	if (ret)
+		return ret;
+
+	nvkm_device_del(&device);
+
+	/* Remove conflicting drivers (vesafb, efifb etc). */
 	aper = alloc_apertures(3);
 	if (!aper)
 		return -ENOMEM;
@@ -930,7 +940,7 @@ nouveau_driver_fops = {
 };
 
 static struct drm_driver
-driver_pci = {
+driver_stub = {
 	.driver_features =
 		DRIVER_GEM | DRIVER_MODESET | DRIVER_PRIME | DRIVER_RENDER |
 		DRIVER_KMS_LEGACY_CONTEXT,
@@ -941,8 +951,6 @@ driver_pci = {
 	.preclose = nouveau_drm_preclose,
 	.postclose = nouveau_drm_postclose,
 	.lastclose = nouveau_vga_lastclose,
-
-	.set_busid = drm_pci_set_busid,
 
 #if defined(CONFIG_DEBUG_FS)
 	.debugfs_init = nouveau_drm_debugfs_init,
@@ -1076,18 +1084,16 @@ err_free:
 static int __init
 nouveau_drm_init(void)
 {
-	pax_open_kernel();
-	driver_platform = driver_pci;
+	driver_pci = driver_stub;
+	driver_pci.set_busid = drm_pci_set_busid;
+	driver_platform = driver_stub;
 	driver_platform.set_busid = drm_platform_set_busid;
-	pax_close_kernel();
 
 	nouveau_display_options();
 
 	if (nouveau_modeset == -1) {
-#ifdef CONFIG_VGA_CONSOLE
 		if (vgacon_text_force())
 			nouveau_modeset = 0;
-#endif
 	}
 
 	if (!nouveau_modeset)

@@ -100,7 +100,7 @@ static int irq_last;
 static u32 *irq_count;
 static int num_irqs;
 
-static device_attribute_no_const **dev_attr;
+static struct device_attribute **dev_attr;
 static char **event_name;
 
 static u8 avg_sample = SAMPLE_16;
@@ -2563,7 +2563,7 @@ static ssize_t ab8500_gpadc_trig_timer_write(struct file *file,
 
 	if (user_trig_timer & ~0xFF) {
 		dev_err(dev,
-			"debugfs error input: should be beetween 0 to 255\n");
+			"debugfs error input: should be between 0 to 255\n");
 		return -EINVAL;
 	}
 

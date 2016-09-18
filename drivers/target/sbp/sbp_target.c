@@ -56,7 +56,7 @@ static const u32 sbp_unit_directory_template[] = {
 
 #define SESSION_MAINTENANCE_INTERVAL HZ
 
-static atomic_unchecked_t login_id = ATOMIC_INIT(0);
+static atomic_t login_id = ATOMIC_INIT(0);
 
 static void session_maintenance_work(struct work_struct *);
 static int sbp_run_transaction(struct fw_card *, int, int, int, int,
@@ -422,7 +422,7 @@ static void sbp_management_request_login(
 	login->login_lun = unpacked_lun;
 	login->status_fifo_addr = sbp2_pointer_to_addr(&req->orb.status_fifo);
 	login->exclusive = LOGIN_ORB_EXCLUSIVE(be32_to_cpu(req->orb.misc));
-	login->login_id = atomic_inc_return_unchecked(&login_id);
+	login->login_id = atomic_inc_return(&login_id);
 
 	login->tgt_agt = sbp_target_agent_register(login);
 	if (IS_ERR(login->tgt_agt)) {
@@ -1726,16 +1726,6 @@ static void sbp_release_cmd(struct se_cmd *se_cmd)
 	sbp_free_request(req);
 }
 
-static int sbp_shutdown_session(struct se_session *se_sess)
-{
-	return 0;
-}
-
-static void sbp_close_session(struct se_session *se_sess)
-{
-	return;
-}
-
 static u32 sbp_sess_get_index(struct se_session *se_sess)
 {
 	return 0;
@@ -2349,8 +2339,6 @@ static const struct target_core_fabric_ops sbp_ops = {
 	.tpg_check_prod_mode_write_protect = sbp_check_false,
 	.tpg_get_inst_index		= sbp_tpg_get_inst_index,
 	.release_cmd			= sbp_release_cmd,
-	.shutdown_session		= sbp_shutdown_session,
-	.close_session			= sbp_close_session,
 	.sess_get_index			= sbp_sess_get_index,
 	.write_pending			= sbp_write_pending,
 	.write_pending_status		= sbp_write_pending_status,

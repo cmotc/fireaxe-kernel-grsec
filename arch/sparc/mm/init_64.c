@@ -189,9 +189,9 @@ unsigned long sparc64_kern_sec_context __read_mostly;
 int num_kernel_image_mappings;
 
 #ifdef CONFIG_DEBUG_DCFLUSH
-atomic_unchecked_t dcpage_flushes = ATOMIC_INIT(0);
+atomic_t dcpage_flushes = ATOMIC_INIT(0);
 #ifdef CONFIG_SMP
-atomic_unchecked_t dcpage_flushes_xcall = ATOMIC_INIT(0);
+atomic_t dcpage_flushes_xcall = ATOMIC_INIT(0);
 #endif
 #endif
 
@@ -199,7 +199,7 @@ inline void flush_dcache_page_impl(struct page *page)
 {
 	BUG_ON(tlb_type == hypervisor);
 #ifdef CONFIG_DEBUG_DCFLUSH
-	atomic_inc_unchecked(&dcpage_flushes);
+	atomic_inc(&dcpage_flushes);
 #endif
 
 #ifdef DCACHE_ALIASING_POSSIBLE
@@ -459,10 +459,10 @@ void mmu_info(struct seq_file *m)
 
 #ifdef CONFIG_DEBUG_DCFLUSH
 	seq_printf(m, "DCPageFlushes\t: %d\n",
-		   atomic_read_unchecked(&dcpage_flushes));
+		   atomic_read(&dcpage_flushes));
 #ifdef CONFIG_SMP
 	seq_printf(m, "DCPageFlushesXC\t: %d\n",
-		   atomic_read_unchecked(&dcpage_flushes_xcall));
+		   atomic_read(&dcpage_flushes_xcall));
 #endif /* CONFIG_SMP */
 #endif /* CONFIG_DEBUG_DCFLUSH */
 }
@@ -2704,8 +2704,7 @@ void __flush_tlb_all(void)
 pte_t *pte_alloc_one_kernel(struct mm_struct *mm,
 			    unsigned long address)
 {
-	struct page *page = alloc_page(GFP_KERNEL | __GFP_NOTRACK |
-				       __GFP_REPEAT | __GFP_ZERO);
+	struct page *page = alloc_page(GFP_KERNEL | __GFP_NOTRACK | __GFP_ZERO);
 	pte_t *pte = NULL;
 
 	if (page)
@@ -2717,8 +2716,7 @@ pte_t *pte_alloc_one_kernel(struct mm_struct *mm,
 pgtable_t pte_alloc_one(struct mm_struct *mm,
 			unsigned long address)
 {
-	struct page *page = alloc_page(GFP_KERNEL | __GFP_NOTRACK |
-				       __GFP_REPEAT | __GFP_ZERO);
+	struct page *page = alloc_page(GFP_KERNEL | __GFP_NOTRACK | __GFP_ZERO);
 	if (!page)
 		return NULL;
 	if (!pgtable_page_ctor(page)) {

@@ -193,7 +193,7 @@ late_initcall(sched_init_debug);
 
 #ifdef CONFIG_SYSCTL
 
-static ctl_table_no_const sd_ctl_dir[] __read_only = {
+static struct ctl_table sd_ctl_dir[] = {
 	{
 		.procname	= "sched_domain",
 		.mode		= 0555,
@@ -210,17 +210,17 @@ static struct ctl_table sd_ctl_root[] = {
 	{}
 };
 
-static ctl_table_no_const *sd_alloc_ctl_entry(int n)
+static struct ctl_table *sd_alloc_ctl_entry(int n)
 {
-	ctl_table_no_const *entry =
+	struct ctl_table *entry =
 		kcalloc(n, sizeof(struct ctl_table), GFP_KERNEL);
 
 	return entry;
 }
 
-static void sd_free_ctl_entry(ctl_table_no_const *tablep)
+static void sd_free_ctl_entry(struct ctl_table **tablep)
 {
-	ctl_table_no_const *entry;
+	struct ctl_table *entry;
 
 	/*
 	 * In the intermediate directories, both the child directory and
@@ -228,25 +228,22 @@ static void sd_free_ctl_entry(ctl_table_no_const *tablep)
 	 * will always be set. In the lowest directory the names are
 	 * static strings and all have proc handlers.
 	 */
-	for (entry = tablep; entry->mode; entry++) {
-		if (entry->child) {
-			sd_free_ctl_entry(entry->child);
-			pax_open_kernel();
-			entry->child = NULL;
-			pax_close_kernel();
-		}
+	for (entry = *tablep; entry->mode; entry++) {
+		if (entry->child)
+			sd_free_ctl_entry(&entry->child);
 		if (entry->proc_handler == NULL)
 			kfree(entry->procname);
 	}
 
-	kfree(tablep);
+	kfree(*tablep);
+	*tablep = NULL;
 }
 
 static int min_load_idx = 0;
 static int max_load_idx = CPU_LOAD_IDX_MAX-1;
 
 static void
-set_table_entry(ctl_table_no_const *entry,
+set_table_entry(struct ctl_table *entry,
 		const char *procname, void *data, int maxlen,
 		umode_t mode, proc_handler *proc_handler,
 		bool load_idx)
@@ -266,7 +263,7 @@ set_table_entry(ctl_table_no_const *entry,
 static struct ctl_table *
 sd_alloc_ctl_domain_table(struct sched_domain *sd)
 {
-	ctl_table_no_const *table = sd_alloc_ctl_entry(14);
+	struct ctl_table *table = sd_alloc_ctl_entry(14);
 
 	if (table == NULL)
 		return NULL;
@@ -304,9 +301,9 @@ sd_alloc_ctl_domain_table(struct sched_domain *sd)
 	return table;
 }
 
-static ctl_table_no_const *sd_alloc_ctl_cpu_table(int cpu)
+static struct ctl_table *sd_alloc_ctl_cpu_table(int cpu)
 {
-	ctl_table_no_const *entry, *table;
+	struct ctl_table *entry, *table;
 	struct sched_domain *sd;
 	int domain_num = 0, i;
 	char buf[32];
@@ -333,13 +330,11 @@ static struct ctl_table_header *sd_sysctl_header;
 void register_sched_domain_sysctl(void)
 {
 	int i, cpu_num = num_possible_cpus();
-	ctl_table_no_const *entry = sd_alloc_ctl_entry(cpu_num + 1);
+	struct ctl_table *entry = sd_alloc_ctl_entry(cpu_num + 1);
 	char buf[32];
 
 	WARN_ON(sd_ctl_dir[0].child);
-	pax_open_kernel();
 	sd_ctl_dir[0].child = entry;
-	pax_close_kernel();
 
 	if (entry == NULL)
 		return;
@@ -361,12 +356,8 @@ void unregister_sched_domain_sysctl(void)
 {
 	unregister_sysctl_table(sd_sysctl_header);
 	sd_sysctl_header = NULL;
-	if (sd_ctl_dir[0].child) {
-		sd_free_ctl_entry(sd_ctl_dir[0].child);
-		pax_open_kernel();
-		sd_ctl_dir[0].child = NULL;
-		pax_close_kernel();
-	}
+	if (sd_ctl_dir[0].child)
+		sd_free_ctl_entry(&sd_ctl_dir[0].child);
 }
 #endif /* CONFIG_SYSCTL */
 #endif /* CONFIG_SMP */
@@ -436,19 +427,12 @@ print_task(struct seq_file *m, struct rq *rq, struct task_struct *p)
 		SPLIT_NS(p->se.vruntime),
 		(long long)(p->nvcsw + p->nivcsw),
 		p->prio);
-#ifdef CONFIG_SCHEDSTATS
-	if (schedstat_enabled()) {
-		SEQ_printf(m, "%9Ld.%06ld %9Ld.%06ld %9Ld.%06ld",
-			SPLIT_NS(p->se.statistics.wait_sum),
-			SPLIT_NS(p->se.sum_exec_runtime),
-			SPLIT_NS(p->se.statistics.sum_sleep_runtime));
-	}
-#else
+
 	SEQ_printf(m, "%9Ld.%06ld %9Ld.%06ld %9Ld.%06ld",
-		0LL, 0L,
+		SPLIT_NS(schedstat_val(p, se.statistics.wait_sum)),
 		SPLIT_NS(p->se.sum_exec_runtime),
-		0LL, 0L);
-#endif
+		SPLIT_NS(schedstat_val(p, se.statistics.sum_sleep_runtime)));
+
 #ifdef CONFIG_NUMA_BALANCING
 	SEQ_printf(m, " %d %d", task_node(p), task_numa_group_id(p));
 #endif
@@ -635,14 +619,15 @@ do {									\
 #undef P
 #undef PN
 
-#ifdef CONFIG_SCHEDSTATS
-#define P(n) SEQ_printf(m, "  .%-30s: %d\n", #n, rq->n);
-#define P64(n) SEQ_printf(m, "  .%-30s: %Ld\n", #n, rq->n);
-
 #ifdef CONFIG_SMP
+#define P64(n) SEQ_printf(m, "  .%-30s: %Ld\n", #n, rq->n);
 	P64(avg_idle);
 	P64(max_idle_balance_cost);
+#undef P64
 #endif
+
+#ifdef CONFIG_SCHEDSTATS
+#define P(n) SEQ_printf(m, "  .%-30s: %d\n", #n, rq->n);
 
 	if (schedstat_enabled()) {
 		P(yld_count);
@@ -653,7 +638,6 @@ do {									\
 	}
 
 #undef P
-#undef P64
 #endif
 	spin_lock_irqsave(&sched_debug_lock, flags);
 	print_cfs_stats(m, cpu);
@@ -817,11 +801,7 @@ static int __init init_sched_debug_procfs(void)
 {
 	struct proc_dir_entry *pe;
 
-#ifdef CONFIG_GRKERNSEC_PROC_ADD
-	pe = proc_create("sched_debug", 0400, NULL, &sched_debug_fops);
-#else
 	pe = proc_create("sched_debug", 0444, NULL, &sched_debug_fops);
-#endif
 	if (!pe)
 		return -ENOMEM;
 	return 0;

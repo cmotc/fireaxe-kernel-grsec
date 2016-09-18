@@ -25,8 +25,7 @@
 #include "io-pgtable.h"
 
 static const struct io_pgtable_init_fns *
-io_pgtable_init_table[IO_PGTABLE_NUM_FMTS] =
-{
+io_pgtable_init_table[IO_PGTABLE_NUM_FMTS] = {
 #ifdef CONFIG_IOMMU_IO_PGTABLE_LPAE
 	[ARM_32_LPAE_S1] = &io_pgtable_arm_32_lpae_s1_init_fns,
 	[ARM_32_LPAE_S2] = &io_pgtable_arm_32_lpae_s2_init_fns,
@@ -38,7 +37,7 @@ io_pgtable_init_table[IO_PGTABLE_NUM_FMTS] =
 #endif
 };
 
-struct io_pgtable *alloc_io_pgtable(enum io_pgtable_fmt fmt,
+struct io_pgtable_ops *alloc_io_pgtable_ops(enum io_pgtable_fmt fmt,
 					    struct io_pgtable_cfg *cfg,
 					    void *cookie)
 {
@@ -60,18 +59,21 @@ struct io_pgtable *alloc_io_pgtable(enum io_pgtable_fmt fmt,
 	iop->cookie	= cookie;
 	iop->cfg	= *cfg;
 
-	return iop;
+	return &iop->ops;
 }
 
 /*
  * It is the IOMMU driver's responsibility to ensure that the page table
  * is no longer accessible to the walker by this point.
  */
-void free_io_pgtable(struct io_pgtable *iop)
+void free_io_pgtable_ops(struct io_pgtable_ops *ops)
 {
-	if (!iop)
+	struct io_pgtable *iop;
+
+	if (!ops)
 		return;
 
+	iop = container_of(ops, struct io_pgtable, ops);
 	io_pgtable_tlb_flush_all(iop);
 	io_pgtable_init_table[iop->fmt]->free(iop);
 }

@@ -59,7 +59,6 @@
 
 #include <asm/mman.h>
 #include <asm/pgalloc.h>
-#include <asm/local.h>
 #include <asm/uaccess.h>
 
 #include <uapi/drm/drm.h>
@@ -91,7 +90,7 @@ struct reservation_object;
 struct dma_buf_attachment;
 
 /*
- * 4 debug categories are defined:
+ * The following categories are defined:
  *
  * CORE: Used in the generic drm code: drm_ioctl.c, drm_mm.c, drm_memory.c, ...
  *	 This is the category used by the DRM_DEBUG() macro.
@@ -244,12 +243,10 @@ void drm_err(const char *format, ...);
  * \param cmd command.
  * \param arg argument.
  */
-typedef int (* const drm_ioctl_t)(struct drm_device *dev, void *data,
-			struct drm_file *file_priv);
-typedef int (* drm_ioctl_no_const_t)(struct drm_device *dev, void *data,
+typedef int drm_ioctl_t(struct drm_device *dev, void *data,
 			struct drm_file *file_priv);
 
-typedef int (* const drm_ioctl_compat_t)(struct file *filp, unsigned int cmd,
+typedef int drm_ioctl_compat_t(struct file *filp, unsigned int cmd,
 			       unsigned long arg);
 
 #define DRM_IOCTL_NR(n)                _IOC_NR(n)
@@ -265,9 +262,9 @@ typedef int (* const drm_ioctl_compat_t)(struct file *filp, unsigned int cmd,
 struct drm_ioctl_desc {
 	unsigned int cmd;
 	int flags;
-	drm_ioctl_t func;
+	drm_ioctl_t *func;
 	const char *name;
-} __do_const;
+};
 
 /**
  * Creates a driver or general drm_ioctl_desc array entry for the given
@@ -583,12 +580,21 @@ struct drm_driver {
 	void (*debugfs_cleanup)(struct drm_minor *minor);
 
 	/**
-	 * Driver-specific constructor for drm_gem_objects, to set up
-	 * obj->driver_private.
+	 * @gem_free_object: deconstructor for drm_gem_objects
 	 *
-	 * Returns 0 on success.
+	 * This is deprecated and should not be used by new drivers. Use
+	 * @gem_free_object_unlocked instead.
 	 */
 	void (*gem_free_object) (struct drm_gem_object *obj);
+
+	/**
+	 * @gem_free_object_unlocked: deconstructor for drm_gem_objects
+	 *
+	 * This is for drivers which are not encumbered with dev->struct_mutex
+	 * legacy locking schemes. Use this hook instead of @gem_free_object.
+	 */
+	void (*gem_free_object_unlocked) (struct drm_gem_object *obj);
+
 	int (*gem_open_object) (struct drm_gem_object *, struct drm_file *);
 	void (*gem_close_object) (struct drm_gem_object *, struct drm_file *);
 
@@ -659,8 +665,7 @@ struct drm_driver {
 
 	/* List of devices hanging off this driver with stealth attach. */
 	struct list_head legacy_dev_list;
-} __do_const;
-typedef struct drm_driver __no_const drm_driver_no_const;
+};
 
 enum drm_minor_type {
 	DRM_MINOR_LEGACY,
@@ -678,8 +683,7 @@ struct drm_info_list {
 	int (*show)(struct seq_file*, void*); /** show callback */
 	u32 driver_features; /**< Required driver features for this entry */
 	void *data;
-} __do_const;
-typedef struct drm_info_list __no_const drm_info_list_no_const;
+};
 
 /**
  * debugfs node structure. This structure represents a debugfs file.
@@ -768,12 +772,13 @@ struct drm_device {
 
 	/** \name Usage Counters */
 	/*@{ */
-	local_t open_count;		/**< Outstanding files open, protected by drm_global_mutex. */
+	int open_count;			/**< Outstanding files open, protected by drm_global_mutex. */
 	spinlock_t buf_lock;		/**< For drm_device::buf_use and a few other things. */
 	int buf_use;			/**< Buffers in use -- cannot alloc */
 	atomic_t buf_alloc;		/**< Buffer allocation in progress */
 	/*@} */
 
+	struct mutex filelist_mutex;
 	struct list_head filelist;
 
 	/** \name Memory management */
@@ -808,14 +813,6 @@ struct drm_device {
 	/*@{ */
 	bool irq_enabled;
 	int irq;
-
-	/*
-	 * At load time, disabling the vblank interrupt won't be allowed since
-	 * old clients may not call the modeset ioctl and therefore misbehave.
-	 * Once the modeset ioctl *has* been called though, we can safely
-	 * disable them when unused.
-	 */
-	bool vblank_disable_allowed;
 
 	/*
 	 * If true, vblank interrupt will be disabled immediately when the

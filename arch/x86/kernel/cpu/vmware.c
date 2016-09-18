@@ -94,7 +94,7 @@ static void __init vmware_platform_setup(void)
  */
 static uint32_t __init vmware_platform(void)
 {
-	if (cpu_has_hypervisor) {
+	if (boot_cpu_has(X86_FEATURE_HYPERVISOR)) {
 		unsigned int eax;
 		unsigned int hyper_vendor_id[3];
 
@@ -136,7 +136,7 @@ static bool __init vmware_legacy_x2apic_available(void)
 	       (eax & (1 << VMWARE_PORT_CMD_LEGACY_X2APIC)) != 0;
 }
 
-const struct hypervisor_x86 x86_hyper_vmware = {
+const __refconst struct hypervisor_x86 x86_hyper_vmware = {
 	.name			= "VMware",
 	.detect			= vmware_platform,
 	.set_cpu_features	= vmware_set_cpu_features,

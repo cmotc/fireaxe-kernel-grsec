@@ -12,6 +12,7 @@
 #include <linux/cpumask.h>
 #include <linux/uprobes.h>
 #include <linux/page-flags-layout.h>
+#include <linux/workqueue.h>
 #include <asm/page.h>
 #include <asm/mmu.h>
 
@@ -73,9 +74,9 @@ struct page {
 			unsigned long counters;
 #else
 			/*
-			 * Keep _count separate from slub cmpxchg_double data.
-			 * As the rest of the double word is protected by
-			 * slab_lock but _count is not.
+			 * Keep _refcount separate from slub cmpxchg_double
+			 * data.  As the rest of the double word is protected by
+			 * slab_lock but _refcount is not.
 			 */
 			unsigned counters;
 #endif
@@ -97,7 +98,11 @@ struct page {
 					};
 					int units;	/* SLOB */
 				};
-				atomic_t _count;		/* Usage count, see below. */
+				/*
+				 * Usage count, *USE WRAPPER FUNCTION*
+				 * when manual accounting. See page_ref.h
+				 */
+				atomic_t _refcount;
 			};
 			unsigned int active;	/* SLAB */
 		};
@@ -248,7 +253,7 @@ struct page_frag_cache {
 	__u32 offset;
 #endif
 	/* we maintain a pagecount bias, so that we dont dirty cache line
-	 * containing page->_count every time we allocate a fragment.
+	 * containing page->_refcount every time we allocate a fragment.
 	 */
 	unsigned int		pagecnt_bias;
 	bool pfmemalloc;
@@ -352,9 +357,7 @@ struct vm_area_struct {
 	struct mempolicy *vm_policy;	/* NUMA policy for the VMA */
 #endif
 	struct vm_userfaultfd_ctx vm_userfaultfd_ctx;
-
-	struct vm_area_struct *vm_mirror;/* PaX: mirror vma or NULL */
-} __randomize_layout;
+};
 
 struct core_thread {
 	struct task_struct *task;
@@ -511,25 +514,10 @@ struct mm_struct {
 #ifdef CONFIG_HUGETLB_PAGE
 	atomic_long_t hugetlb_usage;
 #endif
-
-#if defined(CONFIG_PAX_NOEXEC) || defined(CONFIG_PAX_ASLR)
-	unsigned long pax_flags;
+#ifdef CONFIG_MMU
+	struct work_struct async_put_work;
 #endif
-
-#ifdef CONFIG_PAX_DLRESOLVE
-	unsigned long call_dl_resolve;
-#endif
-
-#if defined(CONFIG_PPC32) && defined(CONFIG_PAX_EMUSIGRT)
-	unsigned long call_syscall;
-#endif
-
-#ifdef CONFIG_PAX_ASLR
-	unsigned long delta_mmap;		/* randomized offset */
-	unsigned long delta_stack;		/* randomized offset */
-#endif
-
-} __randomize_layout;
+};
 
 static inline void mm_init_cpumask(struct mm_struct *mm)
 {

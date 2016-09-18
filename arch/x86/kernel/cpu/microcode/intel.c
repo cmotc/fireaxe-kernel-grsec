@@ -422,7 +422,7 @@ static void show_saved_mc(void)
 		data_size = get_datasize(mc_saved_header);
 		date = mc_saved_header->date;
 
-		pr_debug("mc_saved[%d]: sig=0x%x, pf=0x%x, rev=0x%x, toal size=0x%x, date = %04x-%02x-%02x\n",
+		pr_debug("mc_saved[%d]: sig=0x%x, pf=0x%x, rev=0x%x, total size=0x%x, date = %04x-%02x-%02x\n",
 			 i, sig, pf, rev, total_size,
 			 date & 0xffff,
 			 date >> 24,
@@ -1003,13 +1003,13 @@ static enum ucode_state request_microcode_fw(int cpu, struct device *device,
 
 static int get_ucode_user(void *to, const void *from, size_t n)
 {
-	return copy_from_user(to, (const void __force_user *)from, n);
+	return copy_from_user(to, from, n);
 }
 
 static enum ucode_state
 request_microcode_user(int cpu, const void __user *buf, size_t size)
 {
-	return generic_load_microcode(cpu, (__force_kernel void *)buf, size, &get_ucode_user);
+	return generic_load_microcode(cpu, (void *)buf, size, &get_ucode_user);
 }
 
 static void microcode_fini_cpu(int cpu)

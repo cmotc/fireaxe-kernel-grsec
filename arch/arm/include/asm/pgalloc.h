@@ -17,7 +17,6 @@
 #include <asm/processor.h>
 #include <asm/cacheflush.h>
 #include <asm/tlbflush.h>
-#include <asm/system_info.h>
 
 #define check_pgt_cache()		do { } while (0)
 
@@ -30,7 +29,7 @@
 
 static inline pmd_t *pmd_alloc_one(struct mm_struct *mm, unsigned long addr)
 {
-	return (pmd_t *)get_zeroed_page(GFP_KERNEL | __GFP_REPEAT);
+	return (pmd_t *)get_zeroed_page(GFP_KERNEL);
 }
 
 static inline void pmd_free(struct mm_struct *mm, pmd_t *pmd)
@@ -44,11 +43,6 @@ static inline void pud_populate(struct mm_struct *mm, pud_t *pud, pmd_t *pmd)
 	set_pud(pud, __pud(__pa(pmd) | PMD_TYPE_TABLE));
 }
 
-static inline void pud_populate_kernel(struct mm_struct *mm, pud_t *pud, pmd_t *pmd)
-{
-	pud_populate(mm, pud, pmd);
-}
-
 #else	/* !CONFIG_ARM_LPAE */
 
 /*
@@ -57,7 +51,6 @@ static inline void pud_populate_kernel(struct mm_struct *mm, pud_t *pud, pmd_t *
 #define pmd_alloc_one(mm,addr)		({ BUG(); ((pmd_t *)2); })
 #define pmd_free(mm, pmd)		do { } while (0)
 #define pud_populate(mm,pmd,pte)	BUG()
-#define pud_populate_kernel(mm,pmd,pte)	BUG()
 
 #endif	/* CONFIG_ARM_LPAE */
 
@@ -133,19 +126,6 @@ static inline void pte_free(struct mm_struct *mm, pgtable_t pte)
 {
 	pgtable_page_dtor(pte);
 	__free_page(pte);
-}
-
-static inline void __section_update(pmd_t *pmdp, unsigned long addr, pmdval_t prot)
-{
-#ifdef CONFIG_ARM_LPAE
-	pmdp[0] = __pmd(pmd_val(pmdp[0]) | prot);
-#else
-	if (addr & SECTION_SIZE)
-		pmdp[1] = __pmd(pmd_val(pmdp[1]) | prot);
-	else
-		pmdp[0] = __pmd(pmd_val(pmdp[0]) | prot);
-#endif
-	flush_pmd_entry(pmdp);
 }
 
 static inline void __pmd_populate(pmd_t *pmdp, phys_addr_t pte,

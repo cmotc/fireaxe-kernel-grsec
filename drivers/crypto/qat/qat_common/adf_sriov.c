@@ -93,7 +93,7 @@ static void adf_iov_send_resp(struct work_struct *work)
 	kfree(pf2vf_resp);
 }
 
-static void adf_vf2pf_bh_handler(unsigned long data)
+static void adf_vf2pf_bh_handler(void *data)
 {
 	struct adf_accel_vf_info *vf_info = (struct adf_accel_vf_info *)data;
 	struct adf_pf2vf_resp *pf2vf_resp;
@@ -126,7 +126,7 @@ static int adf_enable_sriov(struct adf_accel_dev *accel_dev)
 		vf_info->vf_nr = i;
 
 		tasklet_init(&vf_info->vf2pf_bh_tasklet,
-			     adf_vf2pf_bh_handler,
+			     (void *)adf_vf2pf_bh_handler,
 			     (unsigned long)vf_info);
 		mutex_init(&vf_info->pf2vf_lock);
 		ratelimit_state_init(&vf_info->vf2pf_ratelimit,
@@ -249,13 +249,7 @@ int adf_sriov_configure(struct pci_dev *pdev, int numvfs)
 			return -EBUSY;
 		}
 
-		if (adf_dev_stop(accel_dev)) {
-			dev_err(&GET_DEV(accel_dev),
-				"Failed to stop qat_dev%d\n",
-				accel_dev->accel_id);
-			return -EFAULT;
-		}
-
+		adf_dev_stop(accel_dev);
 		adf_dev_shutdown(accel_dev);
 	}
 

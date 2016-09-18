@@ -165,9 +165,8 @@ reset_hfcpci(struct IsdnCardState *cs)
 /* Timer function called when kernel timer expires */
 /***************************************************/
 static void
-hfcpci_Timer(unsigned long _cs)
+hfcpci_Timer(struct IsdnCardState *cs)
 {
-	struct IsdnCardState *cs = (struct IsdnCardState *)_cs;
 	cs->hw.hfcpci.timer.expires = jiffies + 75;
 	/* WD RESET */
 /*      WriteReg(cs, HFCD_DATA, HFCD_CTMT, cs->hw.hfcpci.ctmt | 0x80);
@@ -1096,9 +1095,8 @@ hfcpci_interrupt(int intno, void *dev_id)
 /* timer callback for D-chan busy resolution. Currently no function */
 /********************************************************************/
 static void
-hfcpci_dbusy_timer(unsigned long _cs)
+hfcpci_dbusy_timer(struct IsdnCardState *cs)
 {
-	//struct IsdnCardState *cs = (struct IsdnCardState *)_cs;
 }
 
 /*************************************/
@@ -1584,7 +1582,7 @@ inithfcpci(struct IsdnCardState *cs)
 	cs->bcs[1].BC_SetStack = setstack_2b;
 	cs->bcs[0].BC_Close = close_hfcpci;
 	cs->bcs[1].BC_Close = close_hfcpci;
-	cs->dbusytimer.function = hfcpci_dbusy_timer;
+	cs->dbusytimer.function = (void *) hfcpci_dbusy_timer;
 	cs->dbusytimer.data = (long) cs;
 	init_timer(&cs->dbusytimer);
 	mode_hfcpci(cs->bcs, 0, 0);
@@ -1748,7 +1746,7 @@ setup_hfcpci(struct IsdnCard *card)
 	cs->BC_Write_Reg = NULL;
 	cs->irq_func = &hfcpci_interrupt;
 	cs->irq_flags |= IRQF_SHARED;
-	cs->hw.hfcpci.timer.function = hfcpci_Timer;
+	cs->hw.hfcpci.timer.function = (void *) hfcpci_Timer;
 	cs->hw.hfcpci.timer.data = (long) cs;
 	init_timer(&cs->hw.hfcpci.timer);
 	cs->cardmsg = &hfcpci_card_msg;

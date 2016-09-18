@@ -4,7 +4,6 @@
 #include <linux/swap.h>
 #include <linux/memblock.h>
 #include <linux/bootmem.h>	/* for max_low_pfn */
-#include <linux/tboot.h>
 
 #include <asm/cacheflush.h>
 #include <asm/e820.h>
@@ -18,7 +17,6 @@
 #include <asm/proto.h>
 #include <asm/dma.h>		/* for MAX_DMA_PFN */
 #include <asm/microcode.h>
-#include <asm/bios_ebda.h>
 
 /*
  * We need to define the tracepoints somewhere, and tlb.c
@@ -159,23 +157,23 @@ static void __init probe_page_size_mask(void)
 	 * This will simplify cpa(), which otherwise needs to support splitting
 	 * large pages into small in interrupt context, etc.
 	 */
-	if (cpu_has_pse && !debug_pagealloc_enabled())
+	if (boot_cpu_has(X86_FEATURE_PSE) && !debug_pagealloc_enabled())
 		page_size_mask |= 1 << PG_LEVEL_2M;
 #endif
 
 	/* Enable PSE if available */
-	if (cpu_has_pse)
+	if (boot_cpu_has(X86_FEATURE_PSE))
 		cr4_set_bits_and_update_boot(X86_CR4_PSE);
 
 	/* Enable PGE if available */
-	if (cpu_has_pge) {
+	if (boot_cpu_has(X86_FEATURE_PGE)) {
 		cr4_set_bits_and_update_boot(X86_CR4_PGE);
 		__supported_pte_mask |= _PAGE_GLOBAL;
 	} else
 		__supported_pte_mask &= ~_PAGE_GLOBAL;
 
 	/* Enable 1 GB linear kernel mappings if available: */
-	if (direct_gbpages && cpu_has_gbpages) {
+	if (direct_gbpages && boot_cpu_has(X86_FEATURE_GBPAGES)) {
 		printk(KERN_INFO "Using GB pages for direct mapping\n");
 		page_size_mask |= 1 << PG_LEVEL_1G;
 	} else {
@@ -621,18 +619,7 @@ void __init init_mem_mapping(void)
 	early_ioremap_page_table_range_init();
 #endif
 
-#ifdef CONFIG_PAX_PER_CPU_PGD
-	clone_pgd_range(get_cpu_pgd(0, kernel) + KERNEL_PGD_BOUNDARY,
-			swapper_pg_dir + KERNEL_PGD_BOUNDARY,
-			KERNEL_PGD_PTRS);
-	clone_pgd_range(get_cpu_pgd(0, user) + KERNEL_PGD_BOUNDARY,
-			swapper_pg_dir + KERNEL_PGD_BOUNDARY,
-			KERNEL_PGD_PTRS);
-	load_cr3(get_cpu_pgd(0, kernel));
-#else
 	load_cr3(swapper_pg_dir);
-#endif
-
 	__flush_tlb_all();
 
 	early_memtest(0, max_pfn_mapped << PAGE_SHIFT);
@@ -648,34 +635,10 @@ void __init init_mem_mapping(void)
  * Access has to be given to non-kernel-ram areas as well, these contain the PCI
  * mmio resources as well as potential bios/acpi data regions.
  */
-
-#ifdef CONFIG_GRKERNSEC_KMEM
-static unsigned int ebda_start __read_only;
-static unsigned int ebda_end __read_only;
-#endif
-
 int devmem_is_allowed(unsigned long pagenr)
 {
-#ifdef CONFIG_GRKERNSEC_KMEM
-	/* allow BDA */
-	if (!pagenr)
-		return 1;
-	/* allow EBDA */
-	if (pagenr >= ebda_start && pagenr < ebda_end)
-		return 1;
-	/* if tboot is in use, allow access to its hardcoded serial log range */
-	if (tboot_enabled() && ((0x60000 >> PAGE_SHIFT) <= pagenr) && (pagenr < (0x68000 >> PAGE_SHIFT)))
-		return 1;
-	if ((ISA_START_ADDRESS >> PAGE_SHIFT) <= pagenr && pagenr < (ISA_END_ADDRESS >> PAGE_SHIFT))
-		return 1;
-	/* throw out everything else below 1MB */
-	if (pagenr <= 256)
-		return 0;
-#else
 	if (pagenr < 256)
 		return 1;
-#endif
-
 	if (iomem_is_exclusive(pagenr << PAGE_SHIFT))
 		return 0;
 	if (!page_is_ram(pagenr))
@@ -722,33 +685,8 @@ void free_init_pages(char *what, unsigned long begin, unsigned long end)
 	}
 }
 
-#ifdef CONFIG_GRKERNSEC_KMEM
-static inline void gr_init_ebda(void)
-{
-	unsigned int ebda_addr;
-	unsigned int ebda_size = 0;
-
-	ebda_addr = get_bios_ebda();
-	if (ebda_addr) {
-		ebda_size = *(unsigned char *)phys_to_virt(ebda_addr);
-		ebda_size <<= 10;
-	}
-	if (ebda_addr && ebda_size) {
-		ebda_start = ebda_addr >> PAGE_SHIFT;
-		ebda_end = min((unsigned int)PAGE_ALIGN(ebda_addr + ebda_size), (unsigned int)0xa0000) >> PAGE_SHIFT;
-	} else {
-		ebda_start = 0x9f000 >> PAGE_SHIFT;
-		ebda_end = 0xa0000 >> PAGE_SHIFT;
-	}
-}
-#else
-static inline void gr_init_ebda(void) { }
-#endif
-
 void free_initmem(void)
 {
-	gr_init_ebda();
-
 	free_init_pages("unused kernel",
 			(unsigned long)(&__init_begin),
 			(unsigned long)(&__init_end));
@@ -757,13 +695,6 @@ void free_initmem(void)
 #ifdef CONFIG_BLK_DEV_INITRD
 void __init free_initrd_mem(unsigned long start, unsigned long end)
 {
-	/*
-	 * Remember, initrd memory may contain microcode or other useful things.
-	 * Before we lose initrd mem, we need to find a place to hold them
-	 * now that normal virtual memory is enabled.
-	 */
-	save_microcode_in_initrd();
-
 	/*
 	 * end could be not aligned, and We can not align that,
 	 * decompresser could be confused by aligned initrd_end

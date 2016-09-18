@@ -174,7 +174,7 @@ static struct page *logfs_get_dd_page(struct inode *dir, struct dentry *dentry)
 		if (!logfs_exist_block(dir, index))
 			continue;
 		page = read_cache_page(dir->i_mapping, index,
-				logfs_readpage, NULL);
+				(filler_t *)logfs_readpage, NULL);
 		if (IS_ERR(page))
 			return page;
 		dd = kmap_atomic(page);
@@ -306,7 +306,7 @@ static int logfs_readdir(struct file *file, struct dir_context *ctx)
 			continue;
 		}
 		page = read_cache_page(dir->i_mapping, pos,
-				logfs_readpage, NULL);
+				(filler_t *)logfs_readpage, NULL);
 		if (IS_ERR(page))
 			return PTR_ERR(page);
 		dd = kmap(page);
@@ -791,7 +791,7 @@ const struct inode_operations logfs_dir_iops = {
 const struct file_operations logfs_dir_fops = {
 	.fsync		= logfs_fsync,
 	.unlocked_ioctl	= logfs_ioctl,
-	.iterate	= logfs_readdir,
+	.iterate_shared	= logfs_readdir,
 	.read		= generic_read_dir,
-	.llseek		= default_llseek,
+	.llseek		= generic_file_llseek,
 };

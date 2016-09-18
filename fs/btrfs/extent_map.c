@@ -62,7 +62,7 @@ struct extent_map *alloc_extent_map(void)
 
 /**
  * free_extent_map - drop reference count of an extent_map
- * @em:		extent map being releasead
+ * @em:		extent map being released
  *
  * Drops the reference out on @em by one and free the structure
  * if the reference count hits zero.
@@ -235,9 +235,7 @@ static void try_merge_map(struct extent_map_tree *tree, struct extent_map *em)
 			em->start = merge->start;
 			em->orig_start = merge->orig_start;
 			em->len += merge->len;
-			if (em->block_start != EXTENT_MAP_HOLE &&
-			    em->block_start != EXTENT_MAP_INLINE)
-				em->block_len += merge->block_len;
+			em->block_len += merge->block_len;
 			em->block_start = merge->block_start;
 			em->mod_len = (em->mod_len + em->mod_start) - merge->mod_start;
 			em->mod_start = merge->mod_start;
@@ -254,9 +252,7 @@ static void try_merge_map(struct extent_map_tree *tree, struct extent_map *em)
 		merge = rb_entry(rb, struct extent_map, rb_node);
 	if (rb && mergable_maps(em, merge)) {
 		em->len += merge->len;
-		if (em->block_start != EXTENT_MAP_HOLE &&
-		    em->block_start != EXTENT_MAP_INLINE)
-			em->block_len += merge->block_len;
+		em->block_len += merge->block_len;
 		rb_erase(&merge->rb_node, &tree->map);
 		RB_CLEAR_NODE(&merge->rb_node);
 		em->mod_len = (merge->mod_start + merge->mod_len) - em->mod_start;

@@ -170,8 +170,8 @@ struct mapped_device {
 	 * Event handling.
 	 */
 	wait_queue_head_t eventq;
-	atomic_unchecked_t event_nr;
-	atomic_unchecked_t uevent_seq;
+	atomic_t event_nr;
+	atomic_t uevent_seq;
 	struct list_head uevent_list;
 	spinlock_t uevent_lock; /* Protect access to uevent_list */
 
@@ -674,7 +674,7 @@ static void free_io(struct mapped_device *md, struct dm_io *io)
 	mempool_free(io, md->io_pool);
 }
 
-static void free_tio(struct mapped_device *md, struct dm_target_io *tio)
+static void free_tio(struct dm_target_io *tio)
 {
 	bio_put(&tio->clone);
 }
@@ -772,16 +772,14 @@ static void queue_io(struct mapped_device *md, struct bio *bio)
  * function to access the md->map field, and make sure they call
  * dm_put_live_table() when finished.
  */
-struct dm_table *dm_get_live_table(struct mapped_device *md, int *srcu_idx) __acquires(&md->io_barrier);
-struct dm_table *dm_get_live_table(struct mapped_device *md, int *srcu_idx)
+struct dm_table *dm_get_live_table(struct mapped_device *md, int *srcu_idx) __acquires(md->io_barrier)
 {
 	*srcu_idx = srcu_read_lock(&md->io_barrier);
 
 	return srcu_dereference(md->map, &md->io_barrier);
 }
 
-void dm_put_live_table(struct mapped_device *md, int srcu_idx) __releases(&md->io_barrier);
-void dm_put_live_table(struct mapped_device *md, int srcu_idx)
+void dm_put_live_table(struct mapped_device *md, int srcu_idx) __releases(md->io_barrier)
 {
 	srcu_read_unlock(&md->io_barrier, srcu_idx);
 }
@@ -796,15 +794,13 @@ void dm_sync_table(struct mapped_device *md)
  * A fast alternative to dm_get_live_table/dm_put_live_table.
  * The caller must not block between these two functions.
  */
-static struct dm_table *dm_get_live_table_fast(struct mapped_device *md) __acquires(RCU);
-static struct dm_table *dm_get_live_table_fast(struct mapped_device *md)
+static struct dm_table *dm_get_live_table_fast(struct mapped_device *md) __acquires(RCU)
 {
 	rcu_read_lock();
 	return rcu_dereference(md->map);
 }
 
-static void dm_put_live_table_fast(struct mapped_device *md) __releases(RCU);
-static void dm_put_live_table_fast(struct mapped_device *md)
+static void dm_put_live_table_fast(struct mapped_device *md) __releases(RCU)
 {
 	rcu_read_unlock();
 }
@@ -1059,7 +1055,7 @@ static void clone_endio(struct bio *bio)
 		     !bdev_get_queue(bio->bi_bdev)->limits.max_write_same_sectors))
 		disable_write_same(md);
 
-	free_tio(md, tio);
+	free_tio(tio);
 	dec_pending(io, error);
 }
 
@@ -1521,7 +1517,6 @@ static void __map_bio(struct dm_target_io *tio)
 {
 	int r;
 	sector_t sector;
-	struct mapped_device *md;
 	struct bio *clone = &tio->clone;
 	struct dm_target *ti = tio->ti;
 
@@ -1544,9 +1539,8 @@ static void __map_bio(struct dm_target_io *tio)
 		generic_make_request(clone);
 	} else if (r < 0 || r == DM_MAPIO_REQUEUE) {
 		/* error the io and bail out, or requeue it if needed */
-		md = tio->io->md;
 		dec_pending(tio->io, r);
-		free_tio(md, tio);
+		free_tio(tio);
 	} else if (r != DM_MAPIO_SUBMITTED) {
 		DMWARN("unimplemented target map return value: %d", r);
 		BUG();
@@ -1667,7 +1661,7 @@ static int __clone_and_map_data_bio(struct clone_info *ci, struct dm_target *ti,
 		tio->len_ptr = len;
 		r = clone_bio(tio, bio, sector, *len);
 		if (r < 0) {
-			free_tio(ci->md, tio);
+			free_tio(tio);
 			break;
 		}
 		__map_bio(tio);
@@ -2181,7 +2175,7 @@ static void dm_request_fn(struct request_queue *q)
 		     md_in_flight(md) && rq->bio && rq->bio->bi_vcnt == 1 &&
 		     md->last_rq_pos == pos && md->last_rq_rw == rq_data_dir(rq)) ||
 		    (ti->type->busy && ti->type->busy(ti))) {
-			blk_delay_queue(q, HZ / 100);
+			blk_delay_queue(q, 10);
 			return;
 		}
 
@@ -2375,8 +2369,8 @@ static struct mapped_device *alloc_dev(int minor)
 	spin_lock_init(&md->deferred_lock);
 	atomic_set(&md->holders, 1);
 	atomic_set(&md->open_count, 0);
-	atomic_set_unchecked(&md->event_nr, 0);
-	atomic_set_unchecked(&md->uevent_seq, 0);
+	atomic_set(&md->event_nr, 0);
+	atomic_set(&md->uevent_seq, 0);
 	INIT_LIST_HEAD(&md->uevent_list);
 	INIT_LIST_HEAD(&md->table_devices);
 	spin_lock_init(&md->uevent_lock);
@@ -2519,7 +2513,7 @@ static void event_callback(void *context)
 
 	dm_send_uevents(&uevents, &disk_to_dev(md->disk)->kobj);
 
-	atomic_inc_unchecked(&md->event_nr);
+	atomic_inc(&md->event_nr);
 	wake_up(&md->eventq);
 }
 
@@ -3134,7 +3128,8 @@ static void unlock_fs(struct mapped_device *md)
  * Caller must hold md->suspend_lock
  */
 static int __dm_suspend(struct mapped_device *md, struct dm_table *map,
-			unsigned suspend_flags, int interruptible)
+			unsigned suspend_flags, int interruptible,
+			int dmf_suspended_flag)
 {
 	bool do_lockfs = suspend_flags & DM_SUSPEND_LOCKFS_FLAG;
 	bool noflush = suspend_flags & DM_SUSPEND_NOFLUSH_FLAG;
@@ -3201,6 +3196,8 @@ static int __dm_suspend(struct mapped_device *md, struct dm_table *map,
 	 * to finish.
 	 */
 	r = dm_wait_for_completion(md, interruptible);
+	if (!r)
+		set_bit(dmf_suspended_flag, &md->flags);
 
 	if (noflush)
 		clear_bit(DMF_NOFLUSH_SUSPENDING, &md->flags);
@@ -3262,11 +3259,9 @@ retry:
 
 	map = rcu_dereference_protected(md->map, lockdep_is_held(&md->suspend_lock));
 
-	r = __dm_suspend(md, map, suspend_flags, TASK_INTERRUPTIBLE);
+	r = __dm_suspend(md, map, suspend_flags, TASK_INTERRUPTIBLE, DMF_SUSPENDED);
 	if (r)
 		goto out_unlock;
-
-	set_bit(DMF_SUSPENDED, &md->flags);
 
 	dm_table_postsuspend_targets(map);
 
@@ -3361,9 +3356,8 @@ static void __dm_internal_suspend(struct mapped_device *md, unsigned suspend_fla
 	 * would require changing .presuspend to return an error -- avoid this
 	 * until there is a need for more elaborate variants of internal suspend.
 	 */
-	(void) __dm_suspend(md, map, suspend_flags, TASK_UNINTERRUPTIBLE);
-
-	set_bit(DMF_SUSPENDED_INTERNALLY, &md->flags);
+	(void) __dm_suspend(md, map, suspend_flags, TASK_UNINTERRUPTIBLE,
+			    DMF_SUSPENDED_INTERNALLY);
 
 	dm_table_postsuspend_targets(map);
 }
@@ -3457,18 +3451,18 @@ int dm_kobject_uevent(struct mapped_device *md, enum kobject_action action,
 
 uint32_t dm_next_uevent_seq(struct mapped_device *md)
 {
-	return atomic_add_return_unchecked(1, &md->uevent_seq);
+	return atomic_add_return(1, &md->uevent_seq);
 }
 
 uint32_t dm_get_event_nr(struct mapped_device *md)
 {
-	return atomic_read_unchecked(&md->event_nr);
+	return atomic_read(&md->event_nr);
 }
 
 int dm_wait_event(struct mapped_device *md, int event_nr)
 {
 	return wait_event_interruptible(md->eventq,
-			(event_nr != atomic_read_unchecked(&md->event_nr)));
+			(event_nr != atomic_read(&md->event_nr)));
 }
 
 void dm_uevent_add(struct mapped_device *md, struct list_head *elist)

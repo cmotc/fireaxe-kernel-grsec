@@ -11,11 +11,6 @@
  * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
- *
  ******************************************************************************/
 #ifndef _RTW_IOCTL_H_
 #define _RTW_IOCTL_H_
@@ -107,5 +102,14 @@ static int oid_null_function(struct oid_par_priv *poid_par_priv) {
 #endif
 
 extern struct iw_handler_def  rtw_handlers_def;
+
+int drv_query_info(struct  net_device *miniportadaptercontext, NDIS_OID oid,
+		   void *informationbuffer, u32 informationbufferlength,
+		   u32 *byteswritten, u32 *bytesneeded);
+
+int drv_set_info(struct  net_device *MiniportAdapterContext,
+		 NDIS_OID oid, void *informationbuffer,
+		 u32 informationbufferlength, u32 *bytesread,
+		 u32 *bytesneeded);
 
 #endif /*  #ifndef __INC_CEINFO_ */

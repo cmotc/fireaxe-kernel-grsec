@@ -113,11 +113,6 @@
 #define  atomic_inc_return(...)						\
 	__atomic_op_fence(atomic_inc_return, __VA_ARGS__)
 #endif
-
-#ifndef atomic_inc_return_unchecked
-#define  atomic_inc_return_unchecked(...)				\
-	__atomic_op_fence(atomic_inc_return_unchecked, __VA_ARGS__)
-#endif
 #endif /* atomic_inc_return_relaxed */
 
 /* atomic_sub_return_relaxed */
@@ -269,11 +264,6 @@
 #ifndef atomic64_inc_return
 #define  atomic64_inc_return(...)					\
 	__atomic_op_fence(atomic64_inc_return, __VA_ARGS__)
-#endif
-
-#ifndef atomic64_inc_return_unchecked
-#define  atomic64_inc_return_unchecked(...)				\
-	__atomic_op_fence(atomic64_inc_return_unchecked, __VA_ARGS__)
 #endif
 #endif /* atomic64_inc_return_relaxed */
 
@@ -452,7 +442,7 @@
  * Atomically adds @a to @v, so long as @v was not already @u.
  * Returns non-zero if @v was not @u, and zero otherwise.
  */
-static inline int __intentional_overflow(-1) atomic_add_unless(atomic_t *v, int a, int u)
+static inline int atomic_add_unless(atomic_t *v, int a, int u)
 {
 	return __atomic_add_unless(v, a, u) != u;
 }
@@ -570,11 +560,11 @@ static inline int atomic_dec_if_positive(atomic_t *v)
 
 /**
  * atomic_fetch_or - perform *p |= mask and return old value of *p
- * @p: pointer to atomic_t
  * @mask: mask to OR on the atomic_t
+ * @p: pointer to atomic_t
  */
 #ifndef atomic_fetch_or
-static inline int atomic_fetch_or(atomic_t *p, int mask)
+static inline int atomic_fetch_or(int mask, atomic_t *p)
 {
 	int old, val = atomic_read(p);
 

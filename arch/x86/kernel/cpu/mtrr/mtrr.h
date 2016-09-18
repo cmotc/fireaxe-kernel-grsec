@@ -25,7 +25,7 @@ struct mtrr_ops {
 	int	(*validate_add_page)(unsigned long base, unsigned long size,
 				     unsigned int type);
 	int	(*have_wrcomb)(void);
-} __do_const;
+};
 
 extern int generic_get_free_region(unsigned long base, unsigned long size,
 				   int replace_reg);
@@ -52,6 +52,7 @@ void set_mtrr_prepare_save(struct set_mtrr_context *ctxt);
 void fill_mtrr_var_range(unsigned int index,
 		u32 base_lo, u32 base_hi, u32 mask_lo, u32 mask_hi);
 bool get_mtrr_state(void);
+void mtrr_bp_pat_init(void);
 
 extern void set_mtrr_ops(const struct mtrr_ops *ops);
 

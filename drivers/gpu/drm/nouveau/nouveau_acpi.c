@@ -6,7 +6,7 @@
 #include <drm/drm_edid.h>
 #include <acpi/video.h>
 
-#include "nouveau_drm.h"
+#include "nouveau_drv.h"
 #include "nouveau_acpi.h"
 
 #define NOUVEAU_DSM_LED 0x02
@@ -193,7 +193,7 @@ static int nouveau_dsm_power_state(enum vga_switcheroo_client_id id,
 	return nouveau_dsm_set_discrete_state(nouveau_dsm_priv.dhandle, state);
 }
 
-static enum vga_switcheroo_client_id nouveau_dsm_get_client_id(struct pci_dev *pdev)
+static int nouveau_dsm_get_client_id(struct pci_dev *pdev)
 {
 	/* easy option one - intel vendor ID means Integrated */
 	if (pdev->vendor == PCI_VENDOR_ID_INTEL)

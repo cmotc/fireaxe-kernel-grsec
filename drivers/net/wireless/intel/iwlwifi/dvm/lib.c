@@ -94,7 +94,7 @@ void iwlagn_temperature(struct iwl_priv *priv)
 	iwl_tt_handler(priv);
 }
 
-int iwlagn_hwrate_to_mac80211_idx(u32 rate_n_flags, enum ieee80211_band band)
+int iwlagn_hwrate_to_mac80211_idx(u32 rate_n_flags, enum nl80211_band band)
 {
 	int idx = 0;
 	int band_offset = 0;
@@ -105,7 +105,7 @@ int iwlagn_hwrate_to_mac80211_idx(u32 rate_n_flags, enum ieee80211_band band)
 		return idx;
 	/* Legacy rate format, search for match in table */
 	} else {
-		if (band == IEEE80211_BAND_5GHZ)
+		if (band == NL80211_BAND_5GHZ)
 			band_offset = IWL_FIRST_OFDM_RATE;
 		for (idx = band_offset; idx < IWL_RATE_COUNT_LEGACY; idx++)
 			if (iwl_rates[idx].plcp == (rate_n_flags & 0xFF))
@@ -878,7 +878,7 @@ u8 iwl_toggle_tx_ant(struct iwl_priv *priv, u8 ant, u8 valid)
 	int i;
 	u8 ind = ant;
 
-	if (priv->band == IEEE80211_BAND_2GHZ &&
+	if (priv->band == NL80211_BAND_2GHZ &&
 	    priv->bt_traffic_load >= IWL_BT_COEX_TRAFFIC_LOAD_HIGH)
 		return 0;
 
@@ -950,7 +950,7 @@ static void iwlagn_wowlan_program_keys(struct ieee80211_hw *hw,
 
 			rx_p1ks = data->tkip->rx_uni;
 
-			pn64 = atomic64_read_unchecked(&key->tx_pn);
+			pn64 = atomic64_read(&key->tx_pn);
 			tkip_tx_sc->iv16 = cpu_to_le16(TKIP_PN_TO_IV16(pn64));
 			tkip_tx_sc->iv32 = cpu_to_le32(TKIP_PN_TO_IV32(pn64));
 
@@ -1003,7 +1003,7 @@ static void iwlagn_wowlan_program_keys(struct ieee80211_hw *hw,
 			aes_sc = data->rsc_tsc->all_tsc_rsc.aes.unicast_rsc;
 			aes_tx_sc = &data->rsc_tsc->all_tsc_rsc.aes.tsc;
 
-			pn64 = atomic64_read_unchecked(&key->tx_pn);
+			pn64 = atomic64_read(&key->tx_pn);
 			aes_tx_sc->pn = cpu_to_le64(pn64);
 		} else
 			aes_sc = data->rsc_tsc->all_tsc_rsc.aes.multicast_rsc;

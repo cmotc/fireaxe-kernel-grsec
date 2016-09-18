@@ -512,7 +512,7 @@ static void gs_rx_push(unsigned long _port)
 		req = list_first_entry(queue, struct usb_request, list);
 
 		/* leave data queued if tty was rx throttled */
-		if (tty && test_bit(TTY_THROTTLED, &tty->flags))
+		if (tty && tty_throttled(tty))
 			break;
 
 		switch (req->status) {
@@ -579,7 +579,7 @@ static void gs_rx_push(unsigned long _port)
 	 * from starving ... but it's not clear that case ever happens.
 	 */
 	if (!list_empty(queue) && tty) {
-		if (!test_bit(TTY_THROTTLED, &tty->flags)) {
+		if (!tty_throttled(tty)) {
 			if (do_push)
 				tasklet_schedule(&port->push);
 			else
@@ -747,9 +747,9 @@ static int gs_open(struct tty_struct *tty, struct file *file)
 			spin_lock_irq(&port->port_lock);
 
 			/* already open?  Great. */
-			if (atomic_read(&port->port.count)) {
+			if (port->port.count) {
 				status = 0;
-				atomic_inc(&port->port.count);
+				port->port.count++;
 
 			/* currently opening/closing? wait ... */
 			} else if (port->openclose) {
@@ -808,7 +808,7 @@ static int gs_open(struct tty_struct *tty, struct file *file)
 	tty->driver_data = port;
 	port->port.tty = tty;
 
-	atomic_set(&port->port.count, 1);
+	port->port.count = 1;
 	port->openclose = false;
 
 	/* if connected, start the I/O stream */
@@ -850,11 +850,11 @@ static void gs_close(struct tty_struct *tty, struct file *file)
 
 	spin_lock_irq(&port->port_lock);
 
-	if (atomic_read(&port->port.count) != 1) {
-		if (atomic_read(&port->port.count) == 0)
+	if (port->port.count != 1) {
+		if (port->port.count == 0)
 			WARN_ON(1);
 		else
-			atomic_dec(&port->port.count);
+			--port->port.count;
 		goto exit;
 	}
 
@@ -864,7 +864,7 @@ static void gs_close(struct tty_struct *tty, struct file *file)
 	 * and sleep if necessary
 	 */
 	port->openclose = true;
-	atomic_set(&port->port.count, 0);
+	port->port.count = 0;
 
 	gser = port->port_usb;
 	if (gser && gser->disconnect)
@@ -1320,7 +1320,7 @@ static int gs_closed(struct gs_port *port)
 	int cond;
 
 	spin_lock_irq(&port->port_lock);
-	cond = (atomic_read(&port->port.count) == 0) && !port->openclose;
+	cond = (port->port.count == 0) && !port->openclose;
 	spin_unlock_irq(&port->port_lock);
 	return cond;
 }
@@ -1465,7 +1465,7 @@ int gserial_connect(struct gserial *gser, u8 port_num)
 	/* if it's already open, start I/O ... and notify the serial
 	 * protocol about open/close status (connect/disconnect).
 	 */
-	if (atomic_read(&port->port.count)) {
+	if (port->port.count) {
 		pr_debug("gserial_connect: start ttyGS%d\n", port->port_num);
 		gs_start_io(port);
 		if (gser->connect)
@@ -1512,7 +1512,7 @@ void gserial_disconnect(struct gserial *gser)
 
 	port->port_usb = NULL;
 	gser->ioport = NULL;
-	if (atomic_read(&port->port.count) > 0 || port->openclose) {
+	if (port->port.count > 0 || port->openclose) {
 		wake_up_interruptible(&port->drain_wait);
 		if (port->port.tty)
 			tty_hangup(port->port.tty);
@@ -1525,7 +1525,7 @@ void gserial_disconnect(struct gserial *gser)
 
 	/* finally, free any unused/unusable I/O buffers */
 	spin_lock_irqsave(&port->port_lock, flags);
-	if (atomic_read(&port->port.count) == 0 && !port->openclose)
+	if (port->port.count == 0 && !port->openclose)
 		gs_buf_free(&port->port_write_buf);
 	gs_free_requests(gser->out, &port->read_pool, NULL);
 	gs_free_requests(gser->out, &port->read_queue, NULL);

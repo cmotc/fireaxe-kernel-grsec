@@ -1011,7 +1011,7 @@ sdhci_esdhc_imx_probe_dt(struct platform_device *pdev,
 	if (ret)
 		return ret;
 
-	if (!IS_ERR_VALUE(mmc_gpio_get_cd(host->mmc)))
+	if (mmc_gpio_get_cd(host->mmc) >= 0)
 		host->quirks &= ~SDHCI_QUIRK_BROKEN_CARD_DETECTION;
 
 	return 0;
@@ -1190,12 +1190,9 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 			host->ioaddr + 0x6c);
 	}
 
-	if (imx_data->socdata->flags & ESDHC_FLAG_MAN_TUNING) {
-		pax_open_kernel();
-		const_cast(sdhci_esdhc_ops.platform_execute_tuning) =
+	if (imx_data->socdata->flags & ESDHC_FLAG_MAN_TUNING)
+		sdhci_esdhc_ops.platform_execute_tuning =
 					esdhc_executing_tuning;
-		pax_close_kernel();
-	}
 
 	if (imx_data->socdata->flags & ESDHC_FLAG_STD_TUNING)
 		writel(readl(host->ioaddr + ESDHC_TUNING_CTRL) |

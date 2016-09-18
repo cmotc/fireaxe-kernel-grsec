@@ -502,7 +502,7 @@ static DECLARE_TRANSPORT_CLASS(fc_vport_class,
  * Netlink Infrastructure
  */
 
-static atomic_unchecked_t fc_event_seq;
+static atomic_t fc_event_seq;
 
 /**
  * fc_get_event_number - Obtain the next sequential FC event number
@@ -515,7 +515,7 @@ static atomic_unchecked_t fc_event_seq;
 u32
 fc_get_event_number(void)
 {
-	return atomic_add_return_unchecked(1, &fc_event_seq);
+	return atomic_add_return(1, &fc_event_seq);
 }
 EXPORT_SYMBOL(fc_get_event_number);
 
@@ -659,7 +659,7 @@ static __init int fc_transport_init(void)
 {
 	int error;
 
-	atomic_set_unchecked(&fc_event_seq, 0);
+	atomic_set(&fc_event_seq, 0);
 
 	error = transport_class_register(&fc_host_class);
 	if (error)
@@ -849,7 +849,7 @@ static int fc_str_to_dev_loss(const char *buf, unsigned long *val)
 	char *cp;
 
 	*val = simple_strtoul(buf, &cp, 0);
-	if (*cp && (*cp != '\n'))
+	if ((*cp && (*cp != '\n')) || (*val < 0))
 		return -EINVAL;
 	/*
 	 * Check for overflow; dev_loss_tmo is u32
@@ -2027,11 +2027,10 @@ static void fc_vport_dev_release(struct device *dev)
 	kfree(vport);
 }
 
-int scsi_is_fc_vport(const struct device *dev)
+static int scsi_is_fc_vport(const struct device *dev)
 {
 	return dev->release == fc_vport_dev_release;
 }
-EXPORT_SYMBOL(scsi_is_fc_vport);
 
 static int fc_vport_match(struct attribute_container *cont,
 			    struct device *dev)
@@ -2110,7 +2109,8 @@ fc_user_scan_tgt(struct Scsi_Host *shost, uint channel, uint id, u64 lun)
 		if ((channel == rport->channel) &&
 		    (id == rport->scsi_target_id)) {
 			spin_unlock_irqrestore(shost->host_lock, flags);
-			scsi_scan_target(&rport->dev, channel, id, lun, 1);
+			scsi_scan_target(&rport->dev, channel, id, lun,
+					 SCSI_SCAN_MANUAL);
 			return;
 		}
 	}
@@ -3277,7 +3277,8 @@ fc_scsi_scan_rport(struct work_struct *work)
 	    (rport->roles & FC_PORT_ROLE_FCP_TARGET) &&
 	    !(i->f->disable_target_scan)) {
 		scsi_scan_target(&rport->dev, rport->channel,
-			rport->scsi_target_id, SCAN_WILD_CARD, 1);
+				 rport->scsi_target_id, SCAN_WILD_CARD,
+				 SCSI_SCAN_RESCAN);
 	}
 
 	spin_lock_irqsave(shost->host_lock, flags);

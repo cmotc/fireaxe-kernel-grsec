@@ -387,6 +387,10 @@ struct adapter {
 	/* various locks */
 	spinlock_t stats_lock;
 
+	/* support for mailbox command/reply logging */
+#define T4VF_OS_LOG_MBOX_CMDS 256
+	struct mbox_cmd_log *mbox_log;
+
 	/* list of MAC addresses in MPS Hash */
 	struct list_head mac_hlist;
 };
@@ -546,7 +550,7 @@ int t4vf_sge_alloc_eth_txq(struct adapter *, struct sge_eth_txq *,
 			   unsigned int);
 void t4vf_free_sge_resources(struct adapter *);
 
-netdev_tx_t t4vf_eth_xmit(struct sk_buff *, struct net_device *);
+int t4vf_eth_xmit(struct sk_buff *, struct net_device *);
 int t4vf_ethrx_handler(struct sge_rspq *, const __be64 *,
 		       const struct pkt_gl *);
 

@@ -584,7 +584,7 @@ static void temac_device_reset(struct net_device *ndev)
 		dev_err(&ndev->dev, "Error setting TEMAC options\n");
 
 	/* Init Driver variable */
-	ndev->trans_start = jiffies; /* prevent tx timeout */
+	netif_trans_update(ndev); /* prevent tx timeout */
 }
 
 static void temac_adjust_link(struct net_device *ndev)
@@ -673,7 +673,7 @@ static inline int temac_check_tx_bd_space(struct temac_local *lp, int num_frag)
 	return 0;
 }
 
-static netdev_tx_t temac_start_xmit(struct sk_buff *skb, struct net_device *ndev)
+static int temac_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 {
 	struct temac_local *lp = netdev_priv(ndev);
 	struct cdmac_bd *cur_p;

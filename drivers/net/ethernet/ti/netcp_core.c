@@ -1237,7 +1237,7 @@ out:
 }
 
 /* Submit the packet */
-static netdev_tx_t netcp_ndo_start_xmit(struct sk_buff *skb, struct net_device *ndev)
+static int netcp_ndo_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 {
 	struct netcp_intf *netcp = netdev_priv(ndev);
 	int subqueue = skb_get_queue_mapping(skb);
@@ -1272,7 +1272,7 @@ static netdev_tx_t netcp_ndo_start_xmit(struct sk_buff *skb, struct net_device *
 	if (ret)
 		goto drop;
 
-	ndev->trans_start = jiffies;
+	netif_trans_update(ndev);
 
 	/* Check Tx pool count & stop subqueue if needed */
 	desc_count = knav_pool_count(netcp->tx_pool);
@@ -1788,7 +1788,7 @@ static void netcp_ndo_tx_timeout(struct net_device *ndev)
 
 	dev_err(netcp->ndev_dev, "transmit timed out tx descs(%d)\n", descs);
 	netcp_process_tx_compl_packets(netcp, netcp->tx_pool_size);
-	ndev->trans_start = jiffies;
+	netif_trans_update(ndev);
 	netif_tx_wake_all_queues(ndev);
 }
 

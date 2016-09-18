@@ -243,7 +243,6 @@ config PAGE_OWNER
 	bool "Track page owner"
 	depends on DEBUG_KERNEL && STACKTRACE_SUPPORT
 	select DEBUG_FS
-	depends on !GRKERNSEC_KMEM
 	select STACKTRACE
 	select PAGE_EXTENSION
 	help
@@ -258,7 +257,7 @@ config PAGE_OWNER
 
 config DEBUG_FS
 	bool "Debug Filesystem"
-	depends on !GRKERNSEC_KMEM
+	select SRCU
 	help
 	  debugfs is a virtual file system that kernel developers use to put
 	  debugging files into.  Enable this option to be able to read and
@@ -512,7 +511,6 @@ config DEBUG_KMEMLEAK
 	bool "Kernel memory leak detector"
 	depends on DEBUG_KERNEL && HAVE_DEBUG_KMEMLEAK
 	select DEBUG_FS
-	depends on !GRKERNSEC_KMEM
 	select STACKTRACE if STACKTRACE_SUPPORT
 	select KALLSYMS
 	select CRC32
@@ -710,7 +708,6 @@ config KCOV
 	bool "Code coverage for fuzzing"
 	depends on ARCH_HAS_KCOV
 	select DEBUG_FS
-	depends on !GRKERNSEC_KMEM
 	help
 	  KCOV exposes kernel code coverage information in a form suitable
 	  for coverage-guided fuzzing (randomized testing).
@@ -1001,7 +998,7 @@ config DEBUG_MUTEXES
 
 config DEBUG_WW_MUTEX_SLOWPATH
 	bool "Wait/wound mutex debugging: Slowpath testing"
-	depends on DEBUG_KERNEL && TRACE_IRQFLAGS_SUPPORT && STACKTRACE_SUPPORT && LOCKDEP_SUPPORT && !PAX_CONSTIFY_PLUGIN
+	depends on DEBUG_KERNEL && TRACE_IRQFLAGS_SUPPORT && STACKTRACE_SUPPORT && LOCKDEP_SUPPORT
 	select DEBUG_LOCK_ALLOC
 	select DEBUG_SPINLOCK
 	select DEBUG_MUTEXES
@@ -1018,7 +1015,7 @@ config DEBUG_WW_MUTEX_SLOWPATH
 
 config DEBUG_LOCK_ALLOC
 	bool "Lock debugging: detect incorrect freeing of live locks"
-	depends on DEBUG_KERNEL && TRACE_IRQFLAGS_SUPPORT && STACKTRACE_SUPPORT && LOCKDEP_SUPPORT && !PAX_CONSTIFY_PLUGIN
+	depends on DEBUG_KERNEL && TRACE_IRQFLAGS_SUPPORT && STACKTRACE_SUPPORT && LOCKDEP_SUPPORT
 	select DEBUG_SPINLOCK
 	select DEBUG_MUTEXES
 	select LOCKDEP
@@ -1032,7 +1029,7 @@ config DEBUG_LOCK_ALLOC
 
 config PROVE_LOCKING
 	bool "Lock debugging: prove locking correctness"
-	depends on DEBUG_KERNEL && TRACE_IRQFLAGS_SUPPORT && STACKTRACE_SUPPORT && LOCKDEP_SUPPORT && !PAX_CONSTIFY_PLUGIN
+	depends on DEBUG_KERNEL && TRACE_IRQFLAGS_SUPPORT && STACKTRACE_SUPPORT && LOCKDEP_SUPPORT
 	select LOCKDEP
 	select DEBUG_SPINLOCK
 	select DEBUG_MUTEXES
@@ -1083,7 +1080,7 @@ config LOCKDEP
 
 config LOCK_STAT
 	bool "Lock usage statistics"
-	depends on DEBUG_KERNEL && TRACE_IRQFLAGS_SUPPORT && STACKTRACE_SUPPORT && LOCKDEP_SUPPORT && !PAX_CONSTIFY_PLUGIN
+	depends on DEBUG_KERNEL && TRACE_IRQFLAGS_SUPPORT && STACKTRACE_SUPPORT && LOCKDEP_SUPPORT
 	select LOCKDEP
 	select DEBUG_SPINLOCK
 	select DEBUG_MUTEXES
@@ -1293,6 +1290,39 @@ config TORTURE_TEST
 	tristate
 	default n
 
+config RCU_PERF_TEST
+	tristate "performance tests for RCU"
+	depends on DEBUG_KERNEL
+	select TORTURE_TEST
+	select SRCU
+	select TASKS_RCU
+	default n
+	help
+	  This option provides a kernel module that runs performance
+	  tests on the RCU infrastructure.  The kernel module may be built
+	  after the fact on the running kernel to be tested, if desired.
+
+	  Say Y here if you want RCU performance tests to be built into
+	  the kernel.
+	  Say M if you want the RCU performance tests to build as a module.
+	  Say N if you are unsure.
+
+config RCU_PERF_TEST_RUNNABLE
+	bool "performance tests for RCU runnable by default"
+	depends on RCU_PERF_TEST = y
+	default n
+	help
+	  This option provides a way to build the RCU performance tests
+	  directly into the kernel without them starting up at boot time.
+	  You can use /sys/module to manually override this setting.
+	  This /proc file is available only when the RCU performance
+	  tests have been built into the kernel.
+
+	  Say Y here if you want the RCU performance tests to start during
+	  boot (you probably don't).
+	  Say N here if you want the RCU performance tests to start only
+	  after being manually enabled via /sys/module.
+
 config RCU_TORTURE_TEST
 	tristate "torture tests for RCU"
 	depends on DEBUG_KERNEL
@@ -1496,7 +1526,6 @@ config NOTIFIER_ERROR_INJECTION
 	tristate "Notifier error injection"
 	depends on DEBUG_KERNEL
 	select DEBUG_FS
-	depends on !GRKERNSEC_KMEM
 	help
 	  This option provides the ability to inject artificial errors to
 	  specified notifier chain callbacks. It is useful to test the error
@@ -1642,7 +1671,6 @@ config FAIL_MMC_REQUEST
 config FAIL_FUTEX
 	bool "Fault-injection capability for futexes"
 	select DEBUG_FS
-	depends on !GRKERNSEC_KMEM
 	depends on FAULT_INJECTION && FUTEX
 	help
 	  Provide fault-injection capability for futexes.
@@ -1667,7 +1695,6 @@ config LATENCYTOP
 	depends on DEBUG_KERNEL
 	depends on STACKTRACE_SUPPORT
 	depends on PROC_FS
-	depends on !GRKERNSEC_HIDESYM
 	select FRAME_POINTER if !MIPS && !PPC && !S390 && !MICROBLAZE && !ARM_UNWIND && !ARC
 	select KALLSYMS
 	select KALLSYMS_ALL
@@ -1684,7 +1711,7 @@ config ARCH_HAS_DEBUG_STRICT_USER_COPY_CHECKS
 config DEBUG_STRICT_USER_COPY_CHECKS
 	bool "Strict user copy size checks"
 	depends on ARCH_HAS_DEBUG_STRICT_USER_COPY_CHECKS
-	depends on DEBUG_KERNEL && !TRACE_BRANCH_PROFILING && !PAX_SIZE_OVERFLOW
+	depends on DEBUG_KERNEL && !TRACE_BRANCH_PROFILING
 	help
 	  Enabling this option turns a certain set of sanity checks for user
 	  copy operations into compile time failures.
@@ -1814,6 +1841,9 @@ config TEST_BITMAP
 
 	  If unsure, say N.
 
+config TEST_UUID
+	tristate "Test functions located in the uuid module at runtime"
+
 config TEST_RHASHTABLE
 	tristate "Perform selftest on resizable hash table"
 	default n
@@ -1822,11 +1852,22 @@ config TEST_RHASHTABLE
 
 	  If unsure, say N.
 
+config TEST_HASH
+	tristate "Perform selftest on hash functions"
+	default n
+	help
+	  Enable this option to test the kernel's integer (<linux/hash,h>)
+	  and string (<linux/stringhash.h>) hash functions on boot
+	  (or module load).
+
+	  This is intended to help people writing architecture-specific
+	  optimized versions.  If unsure, say N.
+
 endmenu # runtime tests
 
 config PROVIDE_OHCI1394_DMA_INIT
 	bool "Remote debugging over FireWire early on boot"
-	depends on PCI && X86 && !GRKERNSEC
+	depends on PCI && X86
 	help
 	  If you want to debug problems which hang or crash the kernel early
 	  on boot and the crashing machine has a FireWire port, you can use

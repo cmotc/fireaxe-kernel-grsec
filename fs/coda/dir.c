@@ -29,10 +29,11 @@
 #include "coda_int.h"
 
 /* same as fs/bad_inode.c */
-static int coda_mknod(struct inode *inode, struct dentry *dentry, umode_t mode, dev_t dev)
+static int coda_return_EIO(void)
 {
 	return -EIO;
 }
+#define CODA_EIO_ERROR ((void *) (coda_return_EIO))
 
 /* inode operations for directories */
 /* access routines: lookup, readlink, permission */
@@ -423,16 +424,22 @@ static int coda_readdir(struct file *coda_file, struct dir_context *ctx)
 	BUG_ON(!cfi || cfi->cfi_magic != CODA_MAGIC);
 	host_file = cfi->cfi_container;
 
-	if (host_file->f_op->iterate) {
+	if (host_file->f_op->iterate || host_file->f_op->iterate_shared) {
 		struct inode *host_inode = file_inode(host_file);
-
-		inode_lock(host_inode);
 		ret = -ENOENT;
 		if (!IS_DEADDIR(host_inode)) {
-			ret = host_file->f_op->iterate(host_file, ctx);
-			file_accessed(host_file);
+			if (host_file->f_op->iterate_shared) {
+				inode_lock_shared(host_inode);
+				ret = host_file->f_op->iterate_shared(host_file, ctx);
+				file_accessed(host_file);
+				inode_unlock_shared(host_inode);
+			} else {
+				inode_lock(host_inode);
+				ret = host_file->f_op->iterate(host_file, ctx);
+				file_accessed(host_file);
+				inode_unlock(host_inode);
+			}
 		}
-		inode_unlock(host_inode);
 		return ret;
 	}
 	/* Venus: we must read Venus dirents from a file */
@@ -561,7 +568,7 @@ const struct inode_operations coda_dir_inode_operations = {
 	.symlink	= coda_symlink,
 	.mkdir		= coda_mkdir,
 	.rmdir		= coda_rmdir,
-	.mknod		= coda_mknod,
+	.mknod		= CODA_EIO_ERROR,
 	.rename		= coda_rename,
 	.permission	= coda_permission,
 	.getattr	= coda_getattr,

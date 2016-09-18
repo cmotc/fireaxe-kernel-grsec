@@ -164,7 +164,7 @@ static const struct address_space_operations fb_deferred_io_aops = {
 	.set_page_dirty = fb_deferred_io_set_page_dirty,
 };
 
-static int fb_deferred_io_mmap(struct fb_info *info, struct vm_area_struct *vma)
+int fb_deferred_io_mmap(struct fb_info *info, struct vm_area_struct *vma)
 {
 	vma->vm_ops = &fb_deferred_io_vm_ops;
 	vma->vm_flags |= VM_DONTEXPAND | VM_DONTDUMP;
@@ -173,6 +173,7 @@ static int fb_deferred_io_mmap(struct fb_info *info, struct vm_area_struct *vma)
 	vma->vm_private_data = info;
 	return 0;
 }
+EXPORT_SYMBOL(fb_deferred_io_mmap);
 
 /* workqueue callback */
 static void fb_deferred_io_work(struct work_struct *work)
@@ -207,9 +208,7 @@ void fb_deferred_io_init(struct fb_info *info)
 
 	BUG_ON(!fbdefio);
 	mutex_init(&fbdefio->lock);
-	pax_open_kernel();
-	const_cast(info->fbops->fb_mmap) = fb_deferred_io_mmap;
-	pax_close_kernel();
+	info->fbops->fb_mmap = fb_deferred_io_mmap;
 	INIT_DELAYED_WORK(&info->deferred_work, fb_deferred_io_work);
 	INIT_LIST_HEAD(&fbdefio->pagelist);
 	if (fbdefio->delay == 0) /* set a default of 1 s */
@@ -240,9 +239,7 @@ void fb_deferred_io_cleanup(struct fb_info *info)
 		page->mapping = NULL;
 	}
 
-	pax_open_kernel();
-	const_cast(info->fbops->fb_mmap) = NULL;
-	pax_close_kernel();
+	info->fbops->fb_mmap = NULL;
 	mutex_destroy(&fbdefio->lock);
 }
 EXPORT_SYMBOL_GPL(fb_deferred_io_cleanup);

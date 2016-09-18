@@ -56,7 +56,7 @@
 static struct workqueue_struct *device_reset_wq;
 
 static pci_ers_result_t adf_error_detected(struct pci_dev *pdev,
-					   enum pci_channel_state state)
+					   pci_channel_state_t state)
 {
 	struct adf_accel_dev *accel_dev = adf_devmgr_pci_to_accel_dev(pdev);
 

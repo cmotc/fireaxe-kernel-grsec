@@ -1301,7 +1301,7 @@ static int do_fscreeninfo_to_user(struct fb_fix_screeninfo *fix,
 	__u32 data;
 	int err;
 
-	err = copy_to_user(fix32->id, &fix->id, sizeof(fix32->id));
+	err = copy_to_user(&fix32->id, &fix->id, sizeof(fix32->id));
 
 	data = (__u32) (unsigned long) fix->smem_start;
 	err |= put_user(data, &fix32->smem_start);
@@ -1435,7 +1435,10 @@ fb_mmap(struct file *file, struct vm_area_struct * vma)
 	return vm_iomap_memory(vma, start, len);
 }
 
-static int fb_open(struct inode *inode, struct file *file)
+static int
+fb_open(struct inode *inode, struct file *file)
+__acquires(&info->lock)
+__releases(&info->lock)
 {
 	int fbidx = iminor(inode);
 	struct fb_info *info;
@@ -1473,7 +1476,10 @@ out:
 	return res;
 }
 
-static int fb_release(struct inode *inode, struct file *file)
+static int 
+fb_release(struct inode *inode, struct file *file)
+__acquires(&info->lock)
+__releases(&info->lock)
 {
 	struct fb_info * const info = file->private_data;
 
@@ -1848,17 +1854,31 @@ EXPORT_SYMBOL(fb_set_suspend);
 static int __init
 fbmem_init(void)
 {
-	proc_create("fb", 0, NULL, &fb_proc_fops);
+	int ret;
 
-	if (register_chrdev(FB_MAJOR,"fb",&fb_fops))
+	if (!proc_create("fb", 0, NULL, &fb_proc_fops))
+		return -ENOMEM;
+
+	ret = register_chrdev(FB_MAJOR, "fb", &fb_fops);
+	if (ret) {
 		printk("unable to get major %d for fb devs\n", FB_MAJOR);
+		goto err_chrdev;
+	}
 
 	fb_class = class_create(THIS_MODULE, "graphics");
 	if (IS_ERR(fb_class)) {
-		printk(KERN_WARNING "Unable to create fb class; errno = %ld\n", PTR_ERR(fb_class));
+		ret = PTR_ERR(fb_class);
+		pr_warn("Unable to create fb class; errno = %d\n", ret);
 		fb_class = NULL;
+		goto err_class;
 	}
 	return 0;
+
+err_class:
+	unregister_chrdev(FB_MAJOR, "fb");
+err_chrdev:
+	remove_proc_entry("fb", NULL);
+	return ret;
 }
 
 #ifdef MODULE

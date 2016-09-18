@@ -111,6 +111,17 @@ static inline struct hlist_bl_head *d_hash(const struct dentry *parent,
 	return dentry_hashtable + hash_32(hash, d_hash_shift);
 }
 
+#define IN_LOOKUP_SHIFT 10
+static struct hlist_bl_head in_lookup_hashtable[1 << IN_LOOKUP_SHIFT];
+
+static inline struct hlist_bl_head *in_lookup_hash(const struct dentry *parent,
+					unsigned int hash)
+{
+	hash += (unsigned long) parent / L1_CACHE_BYTES;
+	return in_lookup_hashtable + hash_32(hash, IN_LOOKUP_SHIFT);
+}
+
+
 /* Statistics gathering. */
 struct dentry_stat_t dentry_stat = {
 	.age_limit = 45,
@@ -328,9 +339,8 @@ static inline void dentry_rcuwalk_invalidate(struct dentry *dentry)
  * and is unhashed.
  */
 static void dentry_iput(struct dentry * dentry)
-	__releases(&dentry->d_lock)
-	__releases(&dentry->d_inode->i_lock);
-static void dentry_iput(struct dentry * dentry)
+	__releases(dentry->d_lock)
+	__releases(dentry->d_inode->i_lock)
 {
 	struct inode *inode = dentry->d_inode;
 	if (inode) {
@@ -354,9 +364,8 @@ static void dentry_iput(struct dentry * dentry)
  * d_iput() operation if defined. dentry remains in-use.
  */
 static void dentry_unlink_inode(struct dentry * dentry)
-	__releases(&dentry->d_lock)
-	__releases(&dentry->d_inode->i_lock);
-static void dentry_unlink_inode(struct dentry * dentry)
+	__releases(dentry->d_lock)
+	__releases(dentry->d_inode->i_lock)
 {
 	struct inode *inode = dentry->d_inode;
 
@@ -498,6 +507,44 @@ void d_drop(struct dentry *dentry)
 }
 EXPORT_SYMBOL(d_drop);
 
+static inline void dentry_unlist(struct dentry *dentry, struct dentry *parent)
+{
+	struct dentry *next;
+	/*
+	 * Inform d_walk() and shrink_dentry_list() that we are no longer
+	 * attached to the dentry tree
+	 */
+	dentry->d_flags |= DCACHE_DENTRY_KILLED;
+	if (unlikely(list_empty(&dentry->d_child)))
+		return;
+	__list_del_entry(&dentry->d_child);
+	/*
+	 * Cursors can move around the list of children.  While we'd been
+	 * a normal list member, it didn't matter - ->d_child.next would've
+	 * been updated.  However, from now on it won't be and for the
+	 * things like d_walk() it might end up with a nasty surprise.
+	 * Normally d_walk() doesn't care about cursors moving around -
+	 * ->d_lock on parent prevents that and since a cursor has no children
+	 * of its own, we get through it without ever unlocking the parent.
+	 * There is one exception, though - if we ascend from a child that
+	 * gets killed as soon as we unlock it, the next sibling is found
+	 * using the value left in its ->d_child.next.  And if _that_
+	 * pointed to a cursor, and cursor got moved (e.g. by lseek())
+	 * before d_walk() regains parent->d_lock, we'll end up skipping
+	 * everything the cursor had been moved past.
+	 *
+	 * Solution: make sure that the pointer left behind in ->d_child.next
+	 * points to something that won't be moving around.  I.e. skip the
+	 * cursors.
+	 */
+	while (dentry->d_child.next != &parent->d_subdirs) {
+		next = list_entry(dentry->d_child.next, struct dentry, d_child);
+		if (likely(!(next->d_flags & DCACHE_DENTRY_CURSOR)))
+			break;
+		dentry->d_child.next = next->d_child.next;
+	}
+}
+
 static void __dentry_kill(struct dentry *dentry)
 {
 	struct dentry *parent = NULL;
@@ -523,12 +570,7 @@ static void __dentry_kill(struct dentry *dentry)
 	}
 	/* if it was on the hash then remove it */
 	__d_drop(dentry);
-	__list_del_entry(&dentry->d_child);
-	/*
-	 * Inform d_walk() that we are no longer attached to the
-	 * dentry tree
-	 */
-	dentry->d_flags |= DCACHE_DENTRY_KILLED;
+	dentry_unlist(dentry, parent);
 	if (parent)
 		spin_unlock(&parent->d_lock);
 	dentry_iput(dentry);
@@ -536,7 +578,7 @@ static void __dentry_kill(struct dentry *dentry)
 	 * dentry_iput drops the locks, at which point nobody (except
 	 * transient RCU lookups) can reach this dentry.
 	 */
-	BUG_ON(__lockref_read(&dentry->d_lockref) > 0);
+	BUG_ON(dentry->d_lockref.count > 0);
 	this_cpu_dec(nr_dentry);
 	if (dentry->d_op && dentry->d_op->d_release)
 		dentry->d_op->d_release(dentry);
@@ -558,8 +600,7 @@ static void __dentry_kill(struct dentry *dentry)
  * Returns dentry requiring refcount drop, or NULL if we're done.
  */
 static struct dentry *dentry_kill(struct dentry *dentry)
-	__releases(&dentry->d_lock);
-static struct dentry *dentry_kill(struct dentry *dentry)
+	__releases(dentry->d_lock)
 {
 	struct inode *inode = dentry->d_inode;
 	struct dentry *parent = NULL;
@@ -581,7 +622,6 @@ static struct dentry *dentry_kill(struct dentry *dentry)
 
 failed:
 	spin_unlock(&dentry->d_lock);
-	cpu_relax();
 	return dentry; /* try again with same dentry */
 }
 
@@ -590,7 +630,7 @@ static inline struct dentry *lock_parent(struct dentry *dentry)
 	struct dentry *parent = dentry->d_parent;
 	if (IS_ROOT(dentry))
 		return NULL;
-	if (unlikely(__lockref_read(&dentry->d_lockref) < 0))
+	if (unlikely(dentry->d_lockref.count < 0))
 		return NULL;
 	if (likely(spin_trylock(&parent->d_lock)))
 		return parent;
@@ -652,8 +692,8 @@ static inline bool fast_dput(struct dentry *dentry)
 	 */
 	if (unlikely(ret < 0)) {
 		spin_lock(&dentry->d_lock);
-		if (__lockref_read(&dentry->d_lockref) > 1) {
-			__lockref_dec(&dentry->d_lockref);
+		if (dentry->d_lockref.count > 1) {
+			dentry->d_lockref.count--;
 			spin_unlock(&dentry->d_lock);
 			return 1;
 		}
@@ -708,7 +748,7 @@ static inline bool fast_dput(struct dentry *dentry)
 	 * else could have killed it and marked it dead. Either way, we
 	 * don't need to do anything else.
 	 */
-	if (__lockref_read(&dentry->d_lockref)) {
+	if (dentry->d_lockref.count) {
 		spin_unlock(&dentry->d_lock);
 		return 1;
 	}
@@ -718,7 +758,7 @@ static inline bool fast_dput(struct dentry *dentry)
 	 * lock, and we just tested that it was zero, so we can just
 	 * set it to 1.
 	 */
-	__lockref_set(&dentry->d_lockref, 1);
+	dentry->d_lockref.count = 1;
 	return 0;
 }
 
@@ -755,6 +795,8 @@ void dput(struct dentry *dentry)
 		return;
 
 repeat:
+	might_sleep();
+
 	rcu_read_lock();
 	if (likely(fast_dput(dentry))) {
 		rcu_read_unlock();
@@ -763,6 +805,8 @@ repeat:
 
 	/* Slow case: now with the dentry lock held */
 	rcu_read_unlock();
+
+	WARN_ON(d_in_lookup(dentry));
 
 	/* Unreachable? Get rid of it */
 	if (unlikely(d_unhashed(dentry)))
@@ -780,14 +824,16 @@ repeat:
 		dentry->d_flags |= DCACHE_REFERENCED;
 	dentry_lru_add(dentry);
 
-	__lockref_dec(&dentry->d_lockref);
+	dentry->d_lockref.count--;
 	spin_unlock(&dentry->d_lock);
 	return;
 
 kill_it:
 	dentry = dentry_kill(dentry);
-	if (dentry)
+	if (dentry) {
+		cond_resched();
 		goto repeat;
+	}
 }
 EXPORT_SYMBOL(dput);
 
@@ -795,7 +841,7 @@ EXPORT_SYMBOL(dput);
 /* This must be called with d_lock held */
 static inline void __dget_dlock(struct dentry *dentry)
 {
-	__lockref_inc(&dentry->d_lockref);
+	dentry->d_lockref.count++;
 }
 
 static inline void __dget(struct dentry *dentry)
@@ -836,8 +882,8 @@ repeat:
 		goto repeat;
 	}
 	rcu_read_unlock();
-	BUG_ON(!__lockref_read(&ret->d_lockref));
-	__lockref_inc(&ret->d_lockref);
+	BUG_ON(!ret->d_lockref.count);
+	ret->d_lockref.count++;
 	spin_unlock(&ret->d_lock);
 	return ret;
 }
@@ -915,9 +961,9 @@ restart:
 	spin_lock(&inode->i_lock);
 	hlist_for_each_entry(dentry, &inode->i_dentry, d_u.d_alias) {
 		spin_lock(&dentry->d_lock);
-		if (!__lockref_read(&dentry->d_lockref)) {
+		if (!dentry->d_lockref.count) {
 			struct dentry *parent = lock_parent(dentry);
-			if (likely(!__lockref_read(&dentry->d_lockref))) {
+			if (likely(!dentry->d_lockref.count)) {
 				__dentry_kill(dentry);
 				dput(parent);
 				goto restart;
@@ -952,7 +998,7 @@ static void shrink_dentry_list(struct list_head *list)
 		 * We found an inuse dentry which was not removed from
 		 * the LRU because of laziness during lookup. Do not free it.
 		 */
-		if (__lockref_read(&dentry->d_lockref) > 0) {
+		if (dentry->d_lockref.count > 0) {
 			spin_unlock(&dentry->d_lock);
 			if (parent)
 				spin_unlock(&parent->d_lock);
@@ -990,8 +1036,8 @@ static void shrink_dentry_list(struct list_head *list)
 		dentry = parent;
 		while (dentry && !lockref_put_or_lock(&dentry->d_lockref)) {
 			parent = lock_parent(dentry);
-			if (__lockref_read(&dentry->d_lockref) != 1) {
-				__lockref_inc(&dentry->d_lockref);
+			if (dentry->d_lockref.count != 1) {
+				dentry->d_lockref.count--;
 				spin_unlock(&dentry->d_lock);
 				if (parent)
 					spin_unlock(&parent->d_lock);
@@ -1031,7 +1077,7 @@ static enum lru_status dentry_lru_isolate(struct list_head *item,
 	 * counts, just remove them from the LRU. Otherwise give them
 	 * another pass through the LRU.
 	 */
-	if (__lockref_read(&dentry->d_lockref)) {
+	if (dentry->d_lockref.count) {
 		d_lru_isolate(lru, dentry);
 		spin_unlock(&dentry->d_lock);
 		return LRU_REMOVED;
@@ -1192,6 +1238,9 @@ resume:
 		struct list_head *tmp = next;
 		struct dentry *dentry = list_entry(tmp, struct dentry, d_child);
 		next = tmp->next;
+
+		if (unlikely(dentry->d_flags & DCACHE_DENTRY_CURSOR))
+			continue;
 
 		spin_lock_nested(&dentry->d_lock, DENTRY_D_LOCK_NESTED);
 
@@ -1365,7 +1414,7 @@ static enum d_walk_ret select_collect(void *_data, struct dentry *dentry)
 	} else {
 		if (dentry->d_flags & DCACHE_LRU_LIST)
 			d_lru_del(dentry);
-		if (!__lockref_read(&dentry->d_lockref)) {
+		if (!dentry->d_lockref.count) {
 			d_shrink_add(dentry, &data->dispose);
 			data->found++;
 		}
@@ -1413,7 +1462,7 @@ static enum d_walk_ret umount_check(void *_data, struct dentry *dentry)
 		return D_WALK_CONTINUE;
 
 	/* root with refcount 1 is fine */
-	if (dentry == _data && __lockref_read(&dentry->d_lockref) == 1)
+	if (dentry == _data && dentry->d_lockref.count == 1)
 		return D_WALK_CONTINUE;
 
 	printk(KERN_ERR "BUG: Dentry %p{i=%lx,n=%pd} "
@@ -1422,7 +1471,7 @@ static enum d_walk_ret umount_check(void *_data, struct dentry *dentry)
 		       dentry->d_inode ?
 		       dentry->d_inode->i_ino : 0UL,
 		       dentry,
-		       __lockref_read(&dentry->d_lockref),
+		       dentry->d_lockref.count,
 		       dentry->d_sb->s_type->name,
 		       dentry->d_sb->s_id);
 	WARN_ON(1);
@@ -1561,9 +1610,13 @@ struct dentry *__d_alloc(struct super_block *sb, const struct qstr *name)
 	 * be overwriting an internal NUL character
 	 */
 	dentry->d_iname[DNAME_INLINE_LEN-1] = 0;
-	if (name->len > DNAME_INLINE_LEN-1) {
+	if (unlikely(!name)) {
+		static const struct qstr anon = QSTR_INIT("/", 1);
+		name = &anon;
+		dname = dentry->d_iname;
+	} else if (name->len > DNAME_INLINE_LEN-1) {
 		size_t size = offsetof(struct external_name, name[1]);
-		struct external_name *p = kmalloc(round_up(size + name->len, sizeof(unsigned long)),
+		struct external_name *p = kmalloc(size + name->len,
 						  GFP_KERNEL_ACCOUNT);
 		if (!p) {
 			kmem_cache_free(dentry_cache, dentry); 
@@ -1587,7 +1640,7 @@ struct dentry *__d_alloc(struct super_block *sb, const struct qstr *name)
 	smp_wmb();
 	dentry->d_name.name = dname;
 
-	__lockref_set(&dentry->d_lockref, 1);
+	dentry->d_lockref.count = 1;
 	dentry->d_flags = 0;
 	spin_lock_init(&dentry->d_lock);
 	seqcount_init(&dentry->d_seq);
@@ -1596,9 +1649,6 @@ struct dentry *__d_alloc(struct super_block *sb, const struct qstr *name)
 	dentry->d_sb = sb;
 	dentry->d_op = NULL;
 	dentry->d_fsdata = NULL;
-#ifdef CONFIG_GRKERNSEC_CHROOT_RENAME
-	atomic_set(&dentry->chroot_refcnt, 0);
-#endif
 	INIT_HLIST_BL_NODE(&dentry->d_hash);
 	INIT_LIST_HEAD(&dentry->d_lru);
 	INIT_LIST_HEAD(&dentry->d_subdirs);
@@ -1640,6 +1690,16 @@ struct dentry *d_alloc(struct dentry * parent, const struct qstr *name)
 }
 EXPORT_SYMBOL(d_alloc);
 
+struct dentry *d_alloc_cursor(struct dentry * parent)
+{
+	struct dentry *dentry = __d_alloc(parent->d_sb, NULL);
+	if (dentry) {
+		dentry->d_flags |= DCACHE_RCUACCESS | DCACHE_DENTRY_CURSOR;
+		dentry->d_parent = dget(parent);
+	}
+	return dentry;
+}
+
 /**
  * d_alloc_pseudo - allocate a dentry (for lookup-less filesystems)
  * @sb: the superblock
@@ -1659,8 +1719,7 @@ struct dentry *d_alloc_name(struct dentry *parent, const char *name)
 	struct qstr q;
 
 	q.name = name;
-	q.len = strlen(name);
-	q.hash = full_name_hash(q.name, q.len);
+	q.hash_len = hashlen_string(name);
 	return d_alloc(parent, &q);
 }
 EXPORT_SYMBOL(d_alloc_name);
@@ -1752,6 +1811,7 @@ type_determined:
 static void __d_instantiate(struct dentry *dentry, struct inode *inode)
 {
 	unsigned add_flags = d_flags_for_inode(inode);
+	WARN_ON(d_in_lookup(dentry));
 
 	spin_lock(&dentry->d_lock);
 	hlist_add_head(&dentry->d_u.d_alias, &inode->i_dentry);
@@ -1781,11 +1841,11 @@ void d_instantiate(struct dentry *entry, struct inode * inode)
 {
 	BUG_ON(!hlist_unhashed(&entry->d_u.d_alias));
 	if (inode) {
+		security_d_instantiate(entry, inode);
 		spin_lock(&inode->i_lock);
 		__d_instantiate(entry, inode);
 		spin_unlock(&inode->i_lock);
 	}
-	security_d_instantiate(entry, inode);
 }
 EXPORT_SYMBOL(d_instantiate);
 
@@ -1802,6 +1862,7 @@ int d_instantiate_no_diralias(struct dentry *entry, struct inode *inode)
 {
 	BUG_ON(!hlist_unhashed(&entry->d_u.d_alias));
 
+	security_d_instantiate(entry, inode);
 	spin_lock(&inode->i_lock);
 	if (S_ISDIR(inode->i_mode) && !hlist_empty(&inode->i_dentry)) {
 		spin_unlock(&inode->i_lock);
@@ -1810,7 +1871,6 @@ int d_instantiate_no_diralias(struct dentry *entry, struct inode *inode)
 	}
 	__d_instantiate(entry, inode);
 	spin_unlock(&inode->i_lock);
-	security_d_instantiate(entry, inode);
 
 	return 0;
 }
@@ -1821,9 +1881,7 @@ struct dentry *d_make_root(struct inode *root_inode)
 	struct dentry *res = NULL;
 
 	if (root_inode) {
-		static const struct qstr name = QSTR_INIT("/", 1);
-
-		res = __d_alloc(root_inode->i_sb, &name);
+		res = __d_alloc(root_inode->i_sb, NULL);
 		if (res)
 			d_instantiate(res, root_inode);
 		else
@@ -1864,7 +1922,6 @@ EXPORT_SYMBOL(d_find_any_alias);
 
 static struct dentry *__d_obtain_alias(struct inode *inode, int disconnected)
 {
-	static const struct qstr anonstring = QSTR_INIT("/", 1);
 	struct dentry *tmp;
 	struct dentry *res;
 	unsigned add_flags;
@@ -1878,12 +1935,13 @@ static struct dentry *__d_obtain_alias(struct inode *inode, int disconnected)
 	if (res)
 		goto out_iput;
 
-	tmp = __d_alloc(inode->i_sb, &anonstring);
+	tmp = __d_alloc(inode->i_sb, NULL);
 	if (!tmp) {
 		res = ERR_PTR(-ENOMEM);
 		goto out_iput;
 	}
 
+	security_d_instantiate(tmp, inode);
 	spin_lock(&inode->i_lock);
 	res = __d_find_any_alias(inode);
 	if (res) {
@@ -1906,13 +1964,10 @@ static struct dentry *__d_obtain_alias(struct inode *inode, int disconnected)
 	hlist_bl_unlock(&tmp->d_sb->s_anon);
 	spin_unlock(&tmp->d_lock);
 	spin_unlock(&inode->i_lock);
-	security_d_instantiate(tmp, inode);
 
 	return tmp;
 
  out_iput:
-	if (res && !IS_ERR(res))
-		security_d_instantiate(res, inode);
 	iput(inode);
 	return res;
 }
@@ -1981,28 +2036,36 @@ EXPORT_SYMBOL(d_obtain_root);
 struct dentry *d_add_ci(struct dentry *dentry, struct inode *inode,
 			struct qstr *name)
 {
-	struct dentry *found;
-	struct dentry *new;
+	struct dentry *found, *res;
 
 	/*
 	 * First check if a dentry matching the name already exists,
 	 * if not go ahead and create it now.
 	 */
 	found = d_hash_and_lookup(dentry->d_parent, name);
-	if (!found) {
-		new = d_alloc(dentry->d_parent, name);
-		if (!new) {
-			found = ERR_PTR(-ENOMEM);
-		} else {
-			found = d_splice_alias(inode, new);
-			if (found) {
-				dput(new);
-				return found;
-			}
-			return new;
-		}
+	if (found) {
+		iput(inode);
+		return found;
 	}
-	iput(inode);
+	if (d_in_lookup(dentry)) {
+		found = d_alloc_parallel(dentry->d_parent, name,
+					dentry->d_wait);
+		if (IS_ERR(found) || !d_in_lookup(found)) {
+			iput(inode);
+			return found;
+		}
+	} else {
+		found = d_alloc(dentry->d_parent, name);
+		if (!found) {
+			iput(inode);
+			return ERR_PTR(-ENOMEM);
+		} 
+	}
+	res = d_splice_alias(inode, found);
+	if (res) {
+		dput(found);
+		return res;
+	}
 	return found;
 }
 EXPORT_SYMBOL(d_add_ci);
@@ -2251,7 +2314,7 @@ struct dentry *__d_lookup(const struct dentry *parent, const struct qstr *name)
 				goto next;
 		}
 
-		__lockref_inc(&dentry->d_lockref);
+		dentry->d_lockref.count++;
 		found = dentry;
 		spin_unlock(&dentry->d_lock);
 		break;
@@ -2319,7 +2382,7 @@ again:
 	spin_lock(&dentry->d_lock);
 	inode = dentry->d_inode;
 	isdir = S_ISDIR(inode->i_mode);
-	if (__lockref_read(&dentry->d_lockref) == 1) {
+	if (dentry->d_lockref.count == 1) {
 		if (!spin_trylock(&inode->i_lock)) {
 			spin_unlock(&dentry->d_lock);
 			cpu_relax();
@@ -2368,17 +2431,201 @@ void d_rehash(struct dentry * entry)
 }
 EXPORT_SYMBOL(d_rehash);
 
+static inline unsigned start_dir_add(struct inode *dir)
+{
+
+	for (;;) {
+		unsigned n = dir->i_dir_seq;
+		if (!(n & 1) && cmpxchg(&dir->i_dir_seq, n, n + 1) == n)
+			return n;
+		cpu_relax();
+	}
+}
+
+static inline void end_dir_add(struct inode *dir, unsigned n)
+{
+	smp_store_release(&dir->i_dir_seq, n + 2);
+}
+
+static void d_wait_lookup(struct dentry *dentry)
+{
+	if (d_in_lookup(dentry)) {
+		DECLARE_WAITQUEUE(wait, current);
+		add_wait_queue(dentry->d_wait, &wait);
+		do {
+			set_current_state(TASK_UNINTERRUPTIBLE);
+			spin_unlock(&dentry->d_lock);
+			schedule();
+			spin_lock(&dentry->d_lock);
+		} while (d_in_lookup(dentry));
+	}
+}
+
+struct dentry *d_alloc_parallel(struct dentry *parent,
+				const struct qstr *name,
+				wait_queue_head_t *wq)
+{
+	unsigned int len = name->len;
+	unsigned int hash = name->hash;
+	const unsigned char *str = name->name;
+	struct hlist_bl_head *b = in_lookup_hash(parent, hash);
+	struct hlist_bl_node *node;
+	struct dentry *new = d_alloc(parent, name);
+	struct dentry *dentry;
+	unsigned seq, r_seq, d_seq;
+
+	if (unlikely(!new))
+		return ERR_PTR(-ENOMEM);
+
+retry:
+	rcu_read_lock();
+	seq = smp_load_acquire(&parent->d_inode->i_dir_seq) & ~1;
+	r_seq = read_seqbegin(&rename_lock);
+	dentry = __d_lookup_rcu(parent, name, &d_seq);
+	if (unlikely(dentry)) {
+		if (!lockref_get_not_dead(&dentry->d_lockref)) {
+			rcu_read_unlock();
+			goto retry;
+		}
+		if (read_seqcount_retry(&dentry->d_seq, d_seq)) {
+			rcu_read_unlock();
+			dput(dentry);
+			goto retry;
+		}
+		rcu_read_unlock();
+		dput(new);
+		return dentry;
+	}
+	if (unlikely(read_seqretry(&rename_lock, r_seq))) {
+		rcu_read_unlock();
+		goto retry;
+	}
+	hlist_bl_lock(b);
+	if (unlikely(parent->d_inode->i_dir_seq != seq)) {
+		hlist_bl_unlock(b);
+		rcu_read_unlock();
+		goto retry;
+	}
+	/*
+	 * No changes for the parent since the beginning of d_lookup().
+	 * Since all removals from the chain happen with hlist_bl_lock(),
+	 * any potential in-lookup matches are going to stay here until
+	 * we unlock the chain.  All fields are stable in everything
+	 * we encounter.
+	 */
+	hlist_bl_for_each_entry(dentry, node, b, d_u.d_in_lookup_hash) {
+		if (dentry->d_name.hash != hash)
+			continue;
+		if (dentry->d_parent != parent)
+			continue;
+		if (parent->d_flags & DCACHE_OP_COMPARE) {
+			int tlen = dentry->d_name.len;
+			const char *tname = dentry->d_name.name;
+			if (parent->d_op->d_compare(parent, dentry, tlen, tname, name))
+				continue;
+		} else {
+			if (dentry->d_name.len != len)
+				continue;
+			if (dentry_cmp(dentry, str, len))
+				continue;
+		}
+		hlist_bl_unlock(b);
+		/* now we can try to grab a reference */
+		if (!lockref_get_not_dead(&dentry->d_lockref)) {
+			rcu_read_unlock();
+			goto retry;
+		}
+
+		rcu_read_unlock();
+		/*
+		 * somebody is likely to be still doing lookup for it;
+		 * wait for them to finish
+		 */
+		spin_lock(&dentry->d_lock);
+		d_wait_lookup(dentry);
+		/*
+		 * it's not in-lookup anymore; in principle we should repeat
+		 * everything from dcache lookup, but it's likely to be what
+		 * d_lookup() would've found anyway.  If it is, just return it;
+		 * otherwise we really have to repeat the whole thing.
+		 */
+		if (unlikely(dentry->d_name.hash != hash))
+			goto mismatch;
+		if (unlikely(dentry->d_parent != parent))
+			goto mismatch;
+		if (unlikely(d_unhashed(dentry)))
+			goto mismatch;
+		if (parent->d_flags & DCACHE_OP_COMPARE) {
+			int tlen = dentry->d_name.len;
+			const char *tname = dentry->d_name.name;
+			if (parent->d_op->d_compare(parent, dentry, tlen, tname, name))
+				goto mismatch;
+		} else {
+			if (unlikely(dentry->d_name.len != len))
+				goto mismatch;
+			if (unlikely(dentry_cmp(dentry, str, len)))
+				goto mismatch;
+		}
+		/* OK, it *is* a hashed match; return it */
+		spin_unlock(&dentry->d_lock);
+		dput(new);
+		return dentry;
+	}
+	rcu_read_unlock();
+	/* we can't take ->d_lock here; it's OK, though. */
+	new->d_flags |= DCACHE_PAR_LOOKUP;
+	new->d_wait = wq;
+	hlist_bl_add_head_rcu(&new->d_u.d_in_lookup_hash, b);
+	hlist_bl_unlock(b);
+	return new;
+mismatch:
+	spin_unlock(&dentry->d_lock);
+	dput(dentry);
+	goto retry;
+}
+EXPORT_SYMBOL(d_alloc_parallel);
+
+void __d_lookup_done(struct dentry *dentry)
+{
+	struct hlist_bl_head *b = in_lookup_hash(dentry->d_parent,
+						 dentry->d_name.hash);
+	hlist_bl_lock(b);
+	dentry->d_flags &= ~DCACHE_PAR_LOOKUP;
+	__hlist_bl_del(&dentry->d_u.d_in_lookup_hash);
+	wake_up_all(dentry->d_wait);
+	dentry->d_wait = NULL;
+	hlist_bl_unlock(b);
+	INIT_HLIST_NODE(&dentry->d_u.d_alias);
+	INIT_LIST_HEAD(&dentry->d_lru);
+}
+EXPORT_SYMBOL(__d_lookup_done);
 
 /* inode->i_lock held if inode is non-NULL */
 
 static inline void __d_add(struct dentry *dentry, struct inode *inode)
 {
-	if (inode) {
-		__d_instantiate(dentry, inode);
-		spin_unlock(&inode->i_lock);
+	struct inode *dir = NULL;
+	unsigned n;
+	spin_lock(&dentry->d_lock);
+	if (unlikely(d_in_lookup(dentry))) {
+		dir = dentry->d_parent->d_inode;
+		n = start_dir_add(dir);
+		__d_lookup_done(dentry);
 	}
-	security_d_instantiate(dentry, inode);
-	d_rehash(dentry);
+	if (inode) {
+		unsigned add_flags = d_flags_for_inode(inode);
+		hlist_add_head(&dentry->d_u.d_alias, &inode->i_dentry);
+		raw_write_seqcount_begin(&dentry->d_seq);
+		__d_set_inode_and_type(dentry, inode, add_flags);
+		raw_write_seqcount_end(&dentry->d_seq);
+		__fsnotify_d_instantiate(dentry);
+	}
+	_d_rehash(dentry);
+	if (dir)
+		end_dir_add(dir, n);
+	spin_unlock(&dentry->d_lock);
+	if (inode)
+		spin_unlock(&inode->i_lock);
 }
 
 /**
@@ -2392,8 +2639,10 @@ static inline void __d_add(struct dentry *dentry, struct inode *inode)
 
 void d_add(struct dentry *entry, struct inode *inode)
 {
-	if (inode)
+	if (inode) {
+		security_d_instantiate(entry, inode);
 		spin_lock(&inode->i_lock);
+	}
 	__d_add(entry, inode);
 }
 EXPORT_SYMBOL(d_add);
@@ -2603,6 +2852,8 @@ static void dentry_unlock_for_move(struct dentry *dentry, struct dentry *target)
 static void __d_move(struct dentry *dentry, struct dentry *target,
 		     bool exchange)
 {
+	struct inode *dir = NULL;
+	unsigned n;
 	if (!dentry->d_inode)
 		printk(KERN_WARNING "VFS: moving negative dcache entry\n");
 
@@ -2610,6 +2861,11 @@ static void __d_move(struct dentry *dentry, struct dentry *target,
 	BUG_ON(d_ancestor(target, dentry));
 
 	dentry_lock_for_move(dentry, target);
+	if (unlikely(d_in_lookup(target))) {
+		dir = target->d_parent->d_inode;
+		n = start_dir_add(dir);
+		__d_lookup_done(target);
+	}
 
 	write_seqcount_begin(&dentry->d_seq);
 	write_seqcount_begin_nested(&target->d_seq, DENTRY_D_LOCK_NESTED);
@@ -2660,6 +2916,8 @@ static void __d_move(struct dentry *dentry, struct dentry *target,
 	write_seqcount_end(&target->d_seq);
 	write_seqcount_end(&dentry->d_seq);
 
+	if (dir)
+		end_dir_add(dir, n);
 	dentry_unlock_for_move(dentry, target);
 }
 
@@ -2730,7 +2988,8 @@ struct dentry *d_ancestor(struct dentry *p1, struct dentry *p2)
 static int __d_unalias(struct inode *inode,
 		struct dentry *dentry, struct dentry *alias)
 {
-	struct mutex *m1 = NULL, *m2 = NULL;
+	struct mutex *m1 = NULL;
+	struct rw_semaphore *m2 = NULL;
 	int ret = -ESTALE;
 
 	/* If alias and dentry share a parent, then no extra locks required */
@@ -2741,15 +3000,15 @@ static int __d_unalias(struct inode *inode,
 	if (!mutex_trylock(&dentry->d_sb->s_vfs_rename_mutex))
 		goto out_err;
 	m1 = &dentry->d_sb->s_vfs_rename_mutex;
-	if (!inode_trylock(alias->d_parent->d_inode))
+	if (!inode_trylock_shared(alias->d_parent->d_inode))
 		goto out_err;
-	m2 = &alias->d_parent->d_inode->i_mutex;
+	m2 = &alias->d_parent->d_inode->i_rwsem;
 out_unalias:
 	__d_move(alias, dentry, false);
 	ret = 0;
 out_err:
 	if (m2)
-		mutex_unlock(m2);
+		up_read(m2);
 	if (m1)
 		mutex_unlock(m1);
 	return ret;
@@ -2788,6 +3047,7 @@ struct dentry *d_splice_alias(struct inode *inode, struct dentry *dentry)
 	if (!inode)
 		goto out;
 
+	security_d_instantiate(dentry, inode);
 	spin_lock(&inode->i_lock);
 	if (S_ISDIR(inode->i_mode)) {
 		struct dentry *new = __d_find_any_alias(inode);
@@ -2815,7 +3075,6 @@ struct dentry *d_splice_alias(struct inode *inode, struct dentry *dentry)
 			} else {
 				__d_move(new, dentry, false);
 				write_sequnlock(&rename_lock);
-				security_d_instantiate(new, inode);
 			}
 			iput(inode);
 			return new;
@@ -3342,7 +3601,7 @@ static enum d_walk_ret d_genocide_kill(void *data, struct dentry *dentry)
 
 		if (!(dentry->d_flags & DCACHE_GENOCIDE)) {
 			dentry->d_flags |= DCACHE_GENOCIDE;
-			__lockref_dec(&dentry->d_lockref);
+			dentry->d_lockref.count--;
 		}
 	}
 	return D_WALK_CONTINUE;
@@ -3450,8 +3709,7 @@ void __init vfs_caches_init_early(void)
 void __init vfs_caches_init(void)
 {
 	names_cachep = kmem_cache_create("names_cache", PATH_MAX, 0,
-			SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_USERCOPY|
-			SLAB_NO_SANITIZE, NULL);
+			SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
 
 	dcache_init();
 	inode_init();

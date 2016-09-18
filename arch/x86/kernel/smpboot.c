@@ -221,17 +221,14 @@ static void notrace start_secondary(void *unused)
 
 	enable_start_cpu0 = 0;
 
+#ifdef CONFIG_X86_32
+	/* switch away from the initial page table */
+	load_cr3(swapper_pg_dir);
+	__flush_tlb_all();
+#endif
+
 	/* otherwise gcc will move up smp_processor_id before the cpu_init */
 	barrier();
-
-	/* switch away from the initial page table */
-#ifdef CONFIG_PAX_PER_CPU_PGD
-	load_cr3(get_cpu_pgd(smp_processor_id(), kernel));
-#else
-	load_cr3(swapper_pg_dir);
-#endif
-	__flush_tlb_all();
-
 	/*
 	 * Check TSC synchronization with the BP:
 	 */
@@ -924,15 +921,16 @@ void common_cpu_up(unsigned int cpu, struct task_struct *idle)
 	alternatives_enable_smp();
 
 	per_cpu(current_task, cpu) = idle;
-	per_cpu(current_tinfo, cpu) = &idle->tinfo;
 
 #ifdef CONFIG_X86_32
+	/* Stack for startup_32 can be just as for start_secondary onwards */
 	irq_ctx_init(cpu);
+	per_cpu(cpu_current_top_of_stack, cpu) =
+		(unsigned long)task_stack_page(idle) + THREAD_SIZE;
 #else
 	clear_tsk_thread_flag(idle, TIF_FORK);
 	initial_gs = per_cpu_offset(cpu);
 #endif
-	per_cpu(cpu_current_top_of_stack, cpu) = (unsigned long)task_stack_page(idle) - 16 + THREAD_SIZE;
 }
 
 /*
@@ -953,11 +951,9 @@ static int do_boot_cpu(int apicid, int cpu, struct task_struct *idle)
 	unsigned long timeout;
 
 	idle->thread.sp = (unsigned long) (((struct pt_regs *)
-			  (THREAD_SIZE - 16 + task_stack_page(idle))) - 1);
+			  (THREAD_SIZE +  task_stack_page(idle))) - 1);
 
-	pax_open_kernel();
 	early_gdt_descr.address = (unsigned long)get_cpu_gdt_table(cpu);
-	pax_close_kernel();
 	initial_code = (unsigned long)start_secondary;
 	stack_start  = idle->thread.sp;
 
@@ -1105,15 +1101,6 @@ int native_cpu_up(unsigned int cpu, struct task_struct *tidle)
 
 	common_cpu_up(cpu, tidle);
 
-#ifdef CONFIG_PAX_PER_CPU_PGD
-	clone_pgd_range(get_cpu_pgd(cpu, kernel) + KERNEL_PGD_BOUNDARY,
-			swapper_pg_dir + KERNEL_PGD_BOUNDARY,
-			KERNEL_PGD_PTRS);
-	clone_pgd_range(get_cpu_pgd(cpu, user) + KERNEL_PGD_BOUNDARY,
-			swapper_pg_dir + KERNEL_PGD_BOUNDARY,
-			KERNEL_PGD_PTRS);
-#endif
-
 	/*
 	 * We have to walk the irq descriptors to setup the vector
 	 * space for the cpu which comes online.  Prevent irq
@@ -1249,7 +1236,7 @@ static int __init smp_sanity_check(unsigned max_cpus)
 	 * If we couldn't find a local APIC, then get out of here now!
 	 */
 	if (APIC_INTEGRATED(apic_version[boot_cpu_physical_apicid]) &&
-	    !cpu_has_apic) {
+	    !boot_cpu_has(X86_FEATURE_APIC)) {
 		if (!disable_apic) {
 			pr_err("BIOS bug, local APIC #%d not detected!...\n",
 				boot_cpu_physical_apicid);

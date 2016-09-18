@@ -21,7 +21,6 @@ ENTRY(clear_page)
 	movl $4096/8,%ecx
 	xorl %eax,%eax
 	rep stosq
-	pax_force_retaddr
 	ret
 ENDPROC(clear_page)
 
@@ -44,7 +43,6 @@ ENTRY(clear_page_orig)
 	leaq	64(%rdi),%rdi
 	jnz	.Lloop
 	nop
-	pax_force_retaddr
 	ret
 ENDPROC(clear_page_orig)
 
@@ -52,6 +50,5 @@ ENTRY(clear_page_c_e)
 	movl $4096,%ecx
 	xorl %eax,%eax
 	rep stosb
-	pax_force_retaddr
 	ret
 ENDPROC(clear_page_c_e)

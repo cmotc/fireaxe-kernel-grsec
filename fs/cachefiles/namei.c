@@ -263,6 +263,8 @@ requeue:
 void cachefiles_mark_object_inactive(struct cachefiles_cache *cache,
 				     struct cachefiles_object *object)
 {
+	blkcnt_t i_blocks = d_backing_inode(object->dentry)->i_blocks;
+
 	write_lock(&cache->active_lock);
 	rb_erase(&object->active_node, &cache->active_nodes);
 	clear_bit(CACHEFILES_OBJECT_ACTIVE, &object->flags);
@@ -273,9 +275,8 @@ void cachefiles_mark_object_inactive(struct cachefiles_cache *cache,
 	/* This object can now be culled, so we need to let the daemon know
 	 * that there is something it can remove if it needs to.
 	 */
-	atomic_long_add_unchecked(d_backing_inode(object->dentry)->i_blocks,
-			&cache->b_released);
-	if (atomic_inc_return_unchecked(&cache->f_released))
+	atomic_long_add(i_blocks, &cache->b_released);
+	if (atomic_inc_return(&cache->f_released))
 		cachefiles_state_changed(cache);
 }
 
@@ -334,7 +335,7 @@ try_again:
 	/* first step is to make up a grave dentry in the graveyard */
 	sprintf(nbuffer, "%08x%08x",
 		(uint32_t) get_seconds(),
-		(uint32_t) atomic_inc_return_unchecked(&cache->gravecounter));
+		(uint32_t) atomic_inc_return(&cache->gravecounter));
 
 	/* do the multiway lock magic */
 	trap = lock_rename(cache->graveyard, dir);

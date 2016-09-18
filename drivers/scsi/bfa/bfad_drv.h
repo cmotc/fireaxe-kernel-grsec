@@ -187,10 +187,8 @@ union bfad_tmp_buf {
 /*
  * BFAD (PCI function) data structure
  */
-enum bfad_sm_event;
-
 struct bfad_s {
-	void (*sm)(struct bfad_s *, enum bfad_sm_event); /* state machine */
+	bfa_sm_t	sm;	/* state machine */
 	struct list_head list_entry;
 	struct bfa_s	bfa;
 	struct bfa_fcs_s bfa_fcs;
@@ -311,7 +309,6 @@ void		bfad_fcs_stop(struct bfad_s *bfad);
 void		bfad_remove_intr(struct bfad_s *bfad);
 void		bfad_hal_mem_release(struct bfad_s *bfad);
 void		bfad_hcb_comp(void *arg, bfa_status_t status);
-void		bfad_stats_comp(void *arg, bfa_boolean_t _status);
 
 int		bfad_setup_intr(struct bfad_s *bfad);
 void		bfad_remove_intr(struct bfad_s *bfad);

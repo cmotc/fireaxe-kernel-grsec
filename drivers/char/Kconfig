@@ -17,8 +17,7 @@ config DEVMEM
 
 config DEVKMEM
 	bool "/dev/kmem virtual device support"
-	default n
-	depends on !GRKERNSEC_KMEM
+	default y
 	help
 	  Say Y here if you want to support the /dev/kmem device. The
 	  /dev/kmem device is rarely used, but can be used for certain
@@ -280,8 +279,7 @@ if RTC_LIB=n
 
 config RTC
 	tristate "Enhanced Real Time Clock Support (legacy PC RTC driver)"
-	depends on !PPC && !PARISC && !IA64 && !M68K && !SPARC && !FRV \
-			&& !ARM && !SUPERH && !S390 && !AVR32 && !BLACKFIN && !UML
+	depends on ALPHA || (MIPS && MACH_LOONGSON64) || MN10300
 	---help---
 	  If you say Y here and create a character special file /dev/rtc with
 	  major number 10 and minor number 135 using mknod ("man mknod"), you
@@ -586,9 +584,7 @@ config TELCLOCK
 
 config DEVPORT
 	bool
-	depends on !M68K
 	depends on ISA || PCI
-	depends on !GRKERNSEC_KMEM
 	default y
 
 source "drivers/s390/char/Kconfig"

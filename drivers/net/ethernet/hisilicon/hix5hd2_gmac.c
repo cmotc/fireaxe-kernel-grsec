@@ -601,7 +601,7 @@ static irqreturn_t hix5hd2_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static netdev_tx_t hix5hd2_net_xmit(struct sk_buff *skb, struct net_device *dev)
+static int hix5hd2_net_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct hix5hd2_priv *priv = netdev_priv(dev);
 	struct hix5hd2_desc *desc;
@@ -636,7 +636,7 @@ static netdev_tx_t hix5hd2_net_xmit(struct sk_buff *skb, struct net_device *dev)
 	pos = dma_ring_incr(pos, TX_DESC_NUM);
 	writel_relaxed(dma_byte(pos), priv->base + TX_BQ_WR_ADDR);
 
-	dev->trans_start = jiffies;
+	netif_trans_update(dev);
 	dev->stats.tx_packets++;
 	dev->stats.tx_bytes += skb->len;
 	netdev_sent_queue(dev, skb->len);

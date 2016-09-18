@@ -56,7 +56,7 @@ static bool initialize(struct kernel_queue *kq, struct kfd_dev *dev,
 	switch (type) {
 	case KFD_QUEUE_TYPE_DIQ:
 	case KFD_QUEUE_TYPE_HIQ:
-		kq->mqd = dev->dqm->ops->get_mqd_manager(dev->dqm,
+		kq->mqd = dev->dqm->ops.get_mqd_manager(dev->dqm,
 						KFD_MQD_TYPE_HIQ);
 		break;
 	default:
@@ -300,7 +300,7 @@ struct kernel_queue *kernel_queue_init(struct kfd_dev *dev,
 		break;
 	}
 
-	if (kq->ops.initialize(kq, dev, type, KFD_KERNEL_QUEUE_SIZE) == false) {
+	if (!kq->ops.initialize(kq, dev, type, KFD_KERNEL_QUEUE_SIZE)) {
 		pr_err("amdkfd: failed to init kernel queue\n");
 		kfree(kq);
 		return NULL;

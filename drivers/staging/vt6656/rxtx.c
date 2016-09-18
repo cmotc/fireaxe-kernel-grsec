@@ -749,7 +749,7 @@ static void vnt_fill_txkey(struct vnt_usb_send_context *tx_context,
 		mic_hdr->payload_len = cpu_to_be16(payload_len);
 		ether_addr_copy(mic_hdr->mic_addr2, hdr->addr2);
 
-		pn64 = atomic64_read_unchecked(&tx_key->tx_pn);
+		pn64 = atomic64_read(&tx_key->tx_pn);
 		mic_hdr->ccmp_pn[5] = pn64;
 		mic_hdr->ccmp_pn[4] = pn64 >> 8;
 		mic_hdr->ccmp_pn[3] = pn64 >> 16;
@@ -813,7 +813,7 @@ int vnt_tx_packet(struct vnt_private *priv, struct sk_buff *skb)
 	}
 
 	if (current_rate > RATE_11M) {
-		if (info->band == IEEE80211_BAND_5GHZ) {
+		if (info->band == NL80211_BAND_5GHZ) {
 			pkt_type = PK_TYPE_11A;
 		} else {
 			if (tx_rate->flags & IEEE80211_TX_RC_USE_CTS_PROTECT)

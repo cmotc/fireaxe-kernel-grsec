@@ -205,7 +205,7 @@ static void _rtl_ps_inactive_ps(struct ieee80211_hw *hw)
 	ppsc->swrf_processing = false;
 }
 
-void rtl_ips_nic_off_wq_callback(struct work_struct *data)
+void rtl_ips_nic_off_wq_callback(void *data)
 {
 	struct rtl_works *rtlworks =
 	    container_of_dwork_rtl(data, struct rtl_works, ips_nic_off_wq);
@@ -443,14 +443,10 @@ void rtl_lps_enter(struct ieee80211_hw *hw)
 
 	spin_lock_irqsave(&rtlpriv->locks.lps_lock, flag);
 
-	/* Idle for a while if we connect to AP a while ago. */
-	if (mac->cnt_after_linked >= 2) {
-		if (ppsc->dot11_psmode == EACTIVE) {
-			RT_TRACE(rtlpriv, COMP_POWER, DBG_LOUD,
-				 "Enter 802.11 power save mode...\n");
-
-			rtl_lps_set_psmode(hw, EAUTOPS);
-		}
+	if (ppsc->dot11_psmode == EACTIVE) {
+		RT_TRACE(rtlpriv, COMP_POWER, DBG_LOUD,
+			 "Enter 802.11 power save mode...\n");
+		rtl_lps_set_psmode(hw, EAUTOPS);
 	}
 
 	spin_unlock_irqrestore(&rtlpriv->locks.lps_lock, flag);
@@ -595,7 +591,7 @@ void rtl_swlps_rf_awake(struct ieee80211_hw *hw)
 	spin_unlock_irqrestore(&rtlpriv->locks.lps_lock, flag);
 }
 
-void rtl_swlps_rfon_wq_callback(struct work_struct *data)
+void rtl_swlps_rfon_wq_callback(void *data)
 {
 	struct rtl_works *rtlworks =
 	    container_of_dwork_rtl(data, struct rtl_works, ps_rfon_wq);
@@ -687,7 +683,7 @@ void rtl_lps_change_work_callback(struct work_struct *work)
 }
 EXPORT_SYMBOL_GPL(rtl_lps_change_work_callback);
 
-void rtl_swlps_wq_callback(struct work_struct *data)
+void rtl_swlps_wq_callback(void *data)
 {
 	struct rtl_works *rtlworks = container_of_dwork_rtl(data,
 				     struct rtl_works,

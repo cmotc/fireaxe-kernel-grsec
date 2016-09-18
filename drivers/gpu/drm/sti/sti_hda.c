@@ -8,6 +8,7 @@
 #include <linux/component.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/seq_file.h>
 
 #include <drm/drmP.h>
 #include <drm/drm_atomic_helper.h>
@@ -400,7 +401,7 @@ static int hda_dbg_show(struct seq_file *s, void *data)
 	return 0;
 }
 
-static drm_info_list_no_const hda_debugfs_files[] __read_only = {
+static struct drm_info_list hda_debugfs_files[] = {
 	{ "hda", hda_dbg_show, 0, NULL },
 };
 
@@ -415,10 +416,8 @@ static int hda_debugfs_init(struct sti_hda *hda, struct drm_minor *minor)
 {
 	unsigned int i;
 
-	pax_open_kernel();
 	for (i = 0; i < ARRAY_SIZE(hda_debugfs_files); i++)
-		const_cast(hda_debugfs_files[i].data) = hda;
-	pax_close_kernel();
+		hda_debugfs_files[i].data = hda;
 
 	return drm_debugfs_create_files(hda_debugfs_files,
 					ARRAY_SIZE(hda_debugfs_files),

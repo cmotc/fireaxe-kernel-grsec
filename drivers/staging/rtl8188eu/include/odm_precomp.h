@@ -11,11 +11,6 @@
  * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
- *
  ******************************************************************************/
 
 #ifndef	__ODM_PRECOMP_H__
@@ -75,7 +70,7 @@ void odm_RSSIMonitorCheckCE(struct odm_dm_struct *pDM_Odm);
 void odm_TXPowerTrackingThermalMeterInit(struct odm_dm_struct *pDM_Odm);
 void odm_EdcaTurboCheckCE(struct odm_dm_struct *pDM_Odm);
 void odm_TXPowerTrackingCheckCE(struct odm_dm_struct *pDM_Odm);
-void odm_SwAntDivChkAntSwitchCallback(unsigned long FunctionContext);
+void odm_SwAntDivChkAntSwitchCallback(void *FunctionContext);
 void odm_InitHybridAntDiv(struct odm_dm_struct *pDM_Odm);
 void odm_HwAntDiv(struct odm_dm_struct *pDM_Odm);
 

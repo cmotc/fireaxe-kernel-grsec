@@ -89,15 +89,15 @@ static void csio_mgmtm_cleanup(struct csio_mgmtm *);
 static void csio_hw_mbm_cleanup(struct csio_hw *);
 
 /* State machine forward declarations */
-static void csio_hws_uninit(struct csio_sm *, uint32_t);
-static void csio_hws_configuring(struct csio_sm *, uint32_t);
-static void csio_hws_initializing(struct csio_sm *, uint32_t);
-static void csio_hws_ready(struct csio_sm *, uint32_t);
-static void csio_hws_quiescing(struct csio_sm *, uint32_t);
-static void csio_hws_quiesced(struct csio_sm *, uint32_t);
-static void csio_hws_resetting(struct csio_sm *, uint32_t);
-static void csio_hws_removing(struct csio_sm *, uint32_t);
-static void csio_hws_pcierr(struct csio_sm *, uint32_t);
+static void csio_hws_uninit(struct csio_hw *, enum csio_hw_ev);
+static void csio_hws_configuring(struct csio_hw *, enum csio_hw_ev);
+static void csio_hws_initializing(struct csio_hw *, enum csio_hw_ev);
+static void csio_hws_ready(struct csio_hw *, enum csio_hw_ev);
+static void csio_hws_quiescing(struct csio_hw *, enum csio_hw_ev);
+static void csio_hws_quiesced(struct csio_hw *, enum csio_hw_ev);
+static void csio_hws_resetting(struct csio_hw *, enum csio_hw_ev);
+static void csio_hws_removing(struct csio_hw *, enum csio_hw_ev);
+static void csio_hws_pcierr(struct csio_hw *, enum csio_hw_ev);
 
 static void csio_hw_initialize(struct csio_hw *hw);
 static void csio_evtq_stop(struct csio_hw *hw);
@@ -105,12 +105,12 @@ static void csio_evtq_start(struct csio_hw *hw);
 
 int csio_is_hw_ready(struct csio_hw *hw)
 {
-	return csio_match_state(&hw->sm, csio_hws_ready);
+	return csio_match_state(hw, csio_hws_ready);
 }
 
 int csio_is_hw_removing(struct csio_hw *hw)
 {
-	return csio_match_state(&hw->sm, csio_hws_removing);
+	return csio_match_state(hw, csio_hws_removing);
 }
 
 
@@ -2326,11 +2326,8 @@ csio_hw_fatal_err(struct csio_hw *hw)
  *
  */
 static void
-csio_hws_uninit(struct csio_sm *_hw, uint32_t _evt)
+csio_hws_uninit(struct csio_hw *hw, enum csio_hw_ev evt)
 {
-	struct csio_hw *hw = container_of(_hw, struct csio_hw, sm);
-	enum csio_hw_ev evt = _evt;
-
 	hw->prev_evt = hw->cur_evt;
 	hw->cur_evt = evt;
 	CSIO_INC_STATS(hw, n_evt_sm[evt]);
@@ -2354,11 +2351,8 @@ csio_hws_uninit(struct csio_sm *_hw, uint32_t _evt)
  *
  */
 static void
-csio_hws_configuring(struct csio_sm *_hw, uint32_t _evt)
+csio_hws_configuring(struct csio_hw *hw, enum csio_hw_ev evt)
 {
-	struct csio_hw *hw = container_of(_hw, struct csio_hw, sm);
-	enum csio_hw_ev evt = _evt;
-
 	hw->prev_evt = hw->cur_evt;
 	hw->cur_evt = evt;
 	CSIO_INC_STATS(hw, n_evt_sm[evt]);
@@ -2395,11 +2389,8 @@ csio_hws_configuring(struct csio_sm *_hw, uint32_t _evt)
  *
  */
 static void
-csio_hws_initializing(struct csio_sm *_hw, uint32_t _evt)
+csio_hws_initializing(struct csio_hw *hw, enum csio_hw_ev evt)
 {
-	struct csio_hw *hw = container_of(_hw, struct csio_hw, sm);
-	enum csio_hw_ev evt = _evt;
-
 	hw->prev_evt = hw->cur_evt;
 	hw->cur_evt = evt;
 	CSIO_INC_STATS(hw, n_evt_sm[evt]);
@@ -2436,11 +2427,8 @@ csio_hws_initializing(struct csio_sm *_hw, uint32_t _evt)
  *
  */
 static void
-csio_hws_ready(struct csio_sm *_hw, uint32_t _evt)
+csio_hws_ready(struct csio_hw *hw, enum csio_hw_ev evt)
 {
-	struct csio_hw *hw = container_of(_hw, struct csio_hw, sm);
-	enum csio_hw_ev evt = _evt;
-
 	/* Remember the event */
 	hw->evtflag = evt;
 
@@ -2488,11 +2476,8 @@ csio_hws_ready(struct csio_sm *_hw, uint32_t _evt)
  *
  */
 static void
-csio_hws_quiescing(struct csio_sm *_hw, uint32_t _evt)
+csio_hws_quiescing(struct csio_hw *hw, enum csio_hw_ev evt)
 {
-	struct csio_hw *hw = container_of(_hw, struct csio_hw, sm);
-	enum csio_hw_ev evt = _evt;
-
 	hw->prev_evt = hw->cur_evt;
 	hw->cur_evt = evt;
 	CSIO_INC_STATS(hw, n_evt_sm[evt]);
@@ -2551,11 +2536,8 @@ csio_hws_quiescing(struct csio_sm *_hw, uint32_t _evt)
  *
  */
 static void
-csio_hws_quiesced(struct csio_sm *_hw, uint32_t _evt)
+csio_hws_quiesced(struct csio_hw *hw, enum csio_hw_ev evt)
 {
-	struct csio_hw *hw = container_of(_hw, struct csio_hw, sm);
-	enum csio_hw_ev evt = _evt;
-
 	hw->prev_evt = hw->cur_evt;
 	hw->cur_evt = evt;
 	CSIO_INC_STATS(hw, n_evt_sm[evt]);
@@ -2579,11 +2561,8 @@ csio_hws_quiesced(struct csio_sm *_hw, uint32_t _evt)
  *
  */
 static void
-csio_hws_resetting(struct csio_sm *_hw, uint32_t _evt)
+csio_hws_resetting(struct csio_hw *hw, enum csio_hw_ev evt)
 {
-	struct csio_hw *hw = container_of(_hw, struct csio_hw, sm);
-	enum csio_hw_ev evt = _evt;
-
 	hw->prev_evt = hw->cur_evt;
 	hw->cur_evt = evt;
 	CSIO_INC_STATS(hw, n_evt_sm[evt]);
@@ -2608,11 +2587,8 @@ csio_hws_resetting(struct csio_sm *_hw, uint32_t _evt)
  *
  */
 static void
-csio_hws_removing(struct csio_sm *_hw, uint32_t _evt)
+csio_hws_removing(struct csio_hw *hw, enum csio_hw_ev evt)
 {
-	struct csio_hw *hw = container_of(_hw, struct csio_hw, sm);
-	enum csio_hw_ev evt = _evt;
-
 	hw->prev_evt = hw->cur_evt;
 	hw->cur_evt = evt;
 	CSIO_INC_STATS(hw, n_evt_sm[evt]);
@@ -2646,11 +2622,8 @@ csio_hws_removing(struct csio_sm *_hw, uint32_t _evt)
  *
  */
 static void
-csio_hws_pcierr(struct csio_sm *_hw, uint32_t _evt)
+csio_hws_pcierr(struct csio_hw *hw, enum csio_hw_ev evt)
 {
-	struct csio_hw *hw = container_of(_hw, struct csio_hw, sm);
-	enum csio_hw_ev evt = _evt;
-
 	hw->prev_evt = hw->cur_evt;
 	hw->cur_evt = evt;
 	CSIO_INC_STATS(hw, n_evt_sm[evt]);

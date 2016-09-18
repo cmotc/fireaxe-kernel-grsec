@@ -277,7 +277,7 @@ NODE_ERROR(duplicate_property_names, NULL);
 static void check_node_name_chars(struct check *c, struct node *dt,
 				  struct node *node)
 {
-	size_t n = strspn(node->name, c->data);
+	int n = strspn(node->name, c->data);
 
 	if (n < strlen(node->name))
 		FAIL(c, "Bad character '%c' in node %s",
@@ -294,10 +294,34 @@ static void check_node_name_format(struct check *c, struct node *dt,
 }
 NODE_ERROR(node_name_format, NULL, &node_name_chars);
 
+static void check_unit_address_vs_reg(struct check *c, struct node *dt,
+			     struct node *node)
+{
+	const char *unitname = get_unitname(node);
+	struct property *prop = get_property(node, "reg");
+
+	if (!prop) {
+		prop = get_property(node, "ranges");
+		if (prop && !prop->val.len)
+			prop = NULL;
+	}
+
+	if (prop) {
+		if (!unitname[0])
+			FAIL(c, "Node %s has a reg or ranges property, but no unit name",
+			    node->fullpath);
+	} else {
+		if (unitname[0])
+			FAIL(c, "Node %s has a unit name, but no reg property",
+			    node->fullpath);
+	}
+}
+NODE_WARNING(unit_address_vs_reg, NULL);
+
 static void check_property_name_chars(struct check *c, struct node *dt,
 				      struct node *node, struct property *prop)
 {
-	size_t n = strspn(prop->name, c->data);
+	int n = strspn(prop->name, c->data);
 
 	if (n < strlen(prop->name))
 		FAIL(c, "Bad character '%c' in property name \"%s\", node %s",
@@ -399,7 +423,7 @@ static void check_explicit_phandles(struct check *c, struct node *root,
 
 	phandle = propval_cell(prop);
 
-	if ((phandle == 0) || (phandle == ~0U)) {
+	if ((phandle == 0) || (phandle == -1)) {
 		FAIL(c, "%s has bad value (0x%x) in %s property",
 		     node->fullpath, phandle, prop->name);
 		return;
@@ -462,7 +486,7 @@ static void fixup_phandle_references(struct check *c, struct node *dt,
 	cell_t phandle;
 
 	for_each_marker_of_type(m, REF_PHANDLE) {
-		assert(m->offset + (int)sizeof(cell_t) <= prop->val.len);
+		assert(m->offset + sizeof(cell_t) <= prop->val.len);
 
 		refnode = get_node_by_ref(dt, m->ref);
 		if (! refnode) {
@@ -667,6 +691,8 @@ static struct check *check_table[] = {
 
 	&addr_size_cells, &reg_format, &ranges_format,
 
+	&unit_address_vs_reg,
+
 	&avoid_default_addr_size,
 	&obsolete_chosen_interrupt_controller,
 
@@ -688,7 +714,7 @@ static void enable_warning_error(struct check *c, bool warn, bool error)
 
 static void disable_warning_error(struct check *c, bool warn, bool error)
 {
-	size_t i;
+	int i;
 
 	/* Lowering level, also lower it for things this is the prereq
 	 * for */
@@ -709,7 +735,7 @@ static void disable_warning_error(struct check *c, bool warn, bool error)
 
 void parse_checks_option(bool warn, bool error, const char *arg)
 {
-	size_t i;
+	int i;
 	const char *name = arg;
 	bool enable = true;
 
@@ -737,7 +763,7 @@ void parse_checks_option(bool warn, bool error, const char *arg)
 void process_checks(bool force, struct boot_info *bi)
 {
 	struct node *dt = bi->dt;
-	size_t i;
+	int i;
 	int error = 0;
 
 	for (i = 0; i < ARRAY_SIZE(check_table); i++) {

@@ -368,7 +368,7 @@ allow_packet:
 		}
 
 		skb->ip_summed = CHECKSUM_NONE;
-		skb->network_header = 0;
+		skb_set_network_header(skb, skb->head-skb->data);
 		ppp_input(&po->chan, skb);
 
 		return NET_RX_SUCCESS;

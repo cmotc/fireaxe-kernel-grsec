@@ -3,6 +3,7 @@
  * Author: Fabien Dessenne <fabien.dessenne@st.com> for STMicroelectronics.
  * License terms:  GNU General Public License (GPL), version 2
  */
+#include <linux/seq_file.h>
 
 #include <drm/drmP.h>
 
@@ -125,7 +126,7 @@ static int vid_dbg_show(struct seq_file *s, void *arg)
 	return 0;
 }
 
-static drm_info_list_no_const vid_debugfs_files[] __read_only = {
+static struct drm_info_list vid_debugfs_files[] = {
 	{ "vid", vid_dbg_show, 0, NULL },
 };
 
@@ -133,10 +134,8 @@ static int vid_debugfs_init(struct sti_vid *vid, struct drm_minor *minor)
 {
 	unsigned int i;
 
-	pax_open_kernel();
 	for (i = 0; i < ARRAY_SIZE(vid_debugfs_files); i++)
 		vid_debugfs_files[i].data = vid;
-	pax_close_kernel();
 
 	return drm_debugfs_create_files(vid_debugfs_files,
 					ARRAY_SIZE(vid_debugfs_files),

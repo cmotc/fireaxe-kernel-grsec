@@ -44,7 +44,7 @@ static struct internal_dev *internal_dev_priv(struct net_device *netdev)
 }
 
 /* Called with rcu_read_lock_bh. */
-static netdev_tx_t internal_dev_xmit(struct sk_buff *skb, struct net_device *netdev)
+static int internal_dev_xmit(struct sk_buff *skb, struct net_device *netdev)
 {
 	int len, err;
 
@@ -153,7 +153,7 @@ static const struct net_device_ops internal_dev_netdev_ops = {
 	.ndo_set_rx_headroom = internal_set_rx_headroom,
 };
 
-static struct rtnl_link_ops internal_dev_link_ops = {
+static struct rtnl_link_ops internal_dev_link_ops __read_mostly = {
 	.kind = "openvswitch",
 };
 
@@ -165,11 +165,10 @@ static void do_setup(struct net_device *netdev)
 
 	netdev->priv_flags &= ~IFF_TX_SKB_SHARING;
 	netdev->priv_flags |= IFF_LIVE_ADDR_CHANGE | IFF_OPENVSWITCH |
-			      IFF_PHONY_HEADROOM;
+			      IFF_PHONY_HEADROOM | IFF_NO_QUEUE;
 	netdev->destructor = internal_dev_destructor;
 	netdev->ethtool_ops = &internal_dev_ethtool_ops;
 	netdev->rtnl_link_ops = &internal_dev_link_ops;
-	netdev->tx_queue_len = 0;
 
 	netdev->features = NETIF_F_LLTX | NETIF_F_SG | NETIF_F_FRAGLIST |
 			   NETIF_F_HIGHDMA | NETIF_F_HW_CSUM |

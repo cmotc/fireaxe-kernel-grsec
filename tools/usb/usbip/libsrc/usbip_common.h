@@ -15,7 +15,7 @@
 #include <syslog.h>
 #include <unistd.h>
 #include <linux/usb/ch9.h>
-#include "../../../../include/uapi/linux/usbip.h"
+#include <linux/usbip.h>
 
 #ifndef USBIDS_FILE
 #define USBIDS_FILE "/usr/share/hwdata/usb.ids"
@@ -25,9 +25,12 @@
 #define VHCI_STATE_PATH "/var/run/vhci_hcd"
 #endif
 
+#define VUDC_DEVICE_DESCR_FILE "dev_desc"
+
 /* kernel module names */
 #define USBIP_CORE_MOD_NAME	"usbip-core"
 #define USBIP_HOST_DRV_NAME	"usbip-host"
+#define USBIP_DEVICE_DRV_NAME	"usbip-vudc"
 #define USBIP_VHCI_DRV_NAME	"vhci_hcd"
 
 /* sysfs constants */

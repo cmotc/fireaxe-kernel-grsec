@@ -34,7 +34,6 @@
 #include <linux/of.h>
 #include <linux/irqdomain.h>
 #include <linux/i2c/twl.h>
-#include <asm/pgtable.h>
 
 #include "twl-core.h"
 
@@ -697,7 +696,7 @@ int twl4030_init_irq(struct device *dev, int irq_num)
 	nr_irqs = TWL4030_PWR_NR_IRQS + TWL4030_CORE_NR_IRQS;
 
 	irq_base = irq_alloc_descs(-1, 0, nr_irqs, 0);
-	if (IS_ERR_VALUE(irq_base)) {
+	if (irq_base < 0) {
 		dev_err(dev, "Fail to allocate IRQ descs\n");
 		return irq_base;
 	}
@@ -721,12 +720,10 @@ int twl4030_init_irq(struct device *dev, int irq_num)
 	 * Install an irq handler for each of the SIH modules;
 	 * clone dummy irq_chip since PIH can't *do* anything
 	 */
-	pax_open_kernel();
-	memcpy((void *)&twl4030_irq_chip, &dummy_irq_chip, sizeof twl4030_irq_chip);
-	const_cast(twl4030_irq_chip.name) = "twl4030";
+	twl4030_irq_chip = dummy_irq_chip;
+	twl4030_irq_chip.name = "twl4030";
 
-	const_cast(twl4030_sih_irq_chip.irq_ack) = dummy_irq_chip.irq_ack;
-	pax_close_kernel();
+	twl4030_sih_irq_chip.irq_ack = dummy_irq_chip.irq_ack;
 
 	for (i = irq_base; i < irq_end; i++) {
 		irq_set_chip_and_handler(i, &twl4030_irq_chip,

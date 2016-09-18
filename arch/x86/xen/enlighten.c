@@ -75,7 +75,6 @@
 #include <asm/mach_traps.h>
 #include <asm/mwait.h>
 #include <asm/pci_x86.h>
-#include <asm/pat.h>
 #include <asm/cpu.h>
 
 #ifdef CONFIG_ACPI
@@ -131,6 +130,8 @@ struct start_info *xen_start_info;
 EXPORT_SYMBOL_GPL(xen_start_info);
 
 struct shared_info xen_dummy_shared_info;
+
+void *xen_initial_gdt;
 
 RESERVE_BRK(shared_info_page_brk, PAGE_SIZE);
 __read_mostly int xen_have_vector_callback;
@@ -589,7 +590,8 @@ static void xen_load_gdt(const struct desc_ptr *dtr)
 {
 	unsigned long va = dtr->address;
 	unsigned int size = dtr->size + 1;
-	unsigned long frames[65536 / PAGE_SIZE];
+	unsigned pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+	unsigned long frames[pages];
 	int f;
 
 	/*
@@ -637,7 +639,8 @@ static void __init xen_load_gdt_boot(const struct desc_ptr *dtr)
 {
 	unsigned long va = dtr->address;
 	unsigned int size = dtr->size + 1;
-	unsigned long frames[(GDT_SIZE + PAGE_SIZE - 1) / PAGE_SIZE];
+	unsigned pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+	unsigned long frames[pages];
 	int f;
 
 	/*
@@ -645,7 +648,7 @@ static void __init xen_load_gdt_boot(const struct desc_ptr *dtr)
 	 * 8-byte entries, or 16 4k pages..
 	 */
 
-	BUG_ON(size > GDT_SIZE);
+	BUG_ON(size > 65536);
 	BUG_ON(va & ~PAGE_MASK);
 
 	for (f = 0; va < dtr->address + size; va += PAGE_SIZE, f++) {
@@ -774,7 +777,7 @@ static int cvt_gate_to_trap(int vector, const gate_desc *val,
 	 * so we should never see them.  Warn if
 	 * there's an unexpected IST-using fault handler.
 	 */
-	if (addr == (unsigned long)int1)
+	if (addr == (unsigned long)debug)
 		addr = (unsigned long)xen_debug;
 	else if (addr == (unsigned long)int3)
 		addr = (unsigned long)xen_int3;
@@ -1089,6 +1092,26 @@ static int xen_write_msr_safe(unsigned int msr, unsigned low, unsigned high)
 	return ret;
 }
 
+static u64 xen_read_msr(unsigned int msr)
+{
+	/*
+	 * This will silently swallow a #GP from RDMSR.  It may be worth
+	 * changing that.
+	 */
+	int err;
+
+	return xen_read_msr_safe(msr, &err);
+}
+
+static void xen_write_msr(unsigned int msr, unsigned low, unsigned high)
+{
+	/*
+	 * This will silently swallow a #GP from WRMSR.  It may be worth
+	 * changing that.
+	 */
+	xen_write_msr_safe(msr, low, high);
+}
+
 void xen_setup_shared_info(void)
 {
 	if (!xen_feature(XENFEAT_auto_translated_physmap)) {
@@ -1183,13 +1206,11 @@ static unsigned xen_patch(u8 type, u16 clobbers, void *insnbuf,
 }
 
 static const struct pv_info xen_info __initconst = {
-	.paravirt_enabled = 1,
 	.shared_kernel_pmd = 0,
 
 #ifdef CONFIG_X86_64
 	.extra_user_64bit_cs = FLAT_USER_CS64,
 #endif
-	.features = 0,
 	.name = "Xen",
 };
 
@@ -1219,8 +1240,11 @@ static const struct pv_cpu_ops xen_cpu_ops __initconst = {
 
 	.wbinvd = native_wbinvd,
 
-	.read_msr = xen_read_msr_safe,
-	.write_msr = xen_write_msr_safe,
+	.read_msr = xen_read_msr,
+	.write_msr = xen_write_msr,
+
+	.read_msr_safe = xen_read_msr_safe,
+	.write_msr_safe = xen_write_msr_safe,
 
 	.read_pmc = xen_read_pmc,
 
@@ -1259,7 +1283,7 @@ static const struct pv_cpu_ops xen_cpu_ops __initconst = {
 	.end_context_switch = xen_end_context_switch,
 };
 
-static __noreturn void xen_reboot(int reason)
+static void xen_reboot(int reason)
 {
 	struct sched_shutdown r = { .reason = reason };
 	int cpu;
@@ -1267,26 +1291,26 @@ static __noreturn void xen_reboot(int reason)
 	for_each_online_cpu(cpu)
 		xen_pmu_finish(cpu);
 
-	HYPERVISOR_sched_op(SCHEDOP_shutdown, &r);
-	BUG();
+	if (HYPERVISOR_sched_op(SCHEDOP_shutdown, &r))
+		BUG();
 }
 
-static __noreturn void xen_restart(char *msg)
+static void xen_restart(char *msg)
 {
 	xen_reboot(SHUTDOWN_reboot);
 }
 
-static __noreturn void xen_emergency_restart(void)
+static void xen_emergency_restart(void)
 {
 	xen_reboot(SHUTDOWN_reboot);
 }
 
-static __noreturn void xen_machine_halt(void)
+static void xen_machine_halt(void)
 {
 	xen_reboot(SHUTDOWN_poweroff);
 }
 
-static __noreturn void xen_machine_power_off(void)
+static void xen_machine_power_off(void)
 {
 	if (pm_power_off)
 		pm_power_off();
@@ -1439,11 +1463,8 @@ static void __ref xen_setup_gdt(int cpu)
 	pv_cpu_ops.write_gdt_entry = xen_write_gdt_entry_boot;
 	pv_cpu_ops.load_gdt = xen_load_gdt_boot;
 
-	setup_stack_canary_segment(cpu);
-#ifdef CONFIG_X86_64
-	load_percpu_segment(cpu);
-#endif
-	switch_to_new_gdt(cpu);
+	setup_stack_canary_segment(0);
+	switch_to_new_gdt(0);
 
 	pv_cpu_ops.write_gdt_entry = xen_write_gdt_entry;
 	pv_cpu_ops.load_gdt = xen_load_gdt;
@@ -1468,10 +1489,10 @@ static void xen_pvh_set_cr_flags(int cpu)
 	 * For BSP, PSE PGE are set in probe_page_size_mask(), for APs
 	 * set them here. For all, OSFXSR OSXMMEXCPT are set in fpu__init_cpu().
 	*/
-	if (cpu_has_pse)
+	if (boot_cpu_has(X86_FEATURE_PSE))
 		cr4_set_bits_and_update_boot(X86_CR4_PSE);
 
-	if (cpu_has_pge)
+	if (boot_cpu_has(X86_FEATURE_PGE))
 		cr4_set_bits_and_update_boot(X86_CR4_PGE);
 }
 
@@ -1505,12 +1526,16 @@ static void __init xen_pvh_early_guest_init(void)
 }
 #endif    /* CONFIG_XEN_PVH */
 
+static void __init xen_dom0_set_legacy_features(void)
+{
+	x86_platform.legacy.rtc = 1;
+}
+
 /* First C function to be called on Xen boot */
 asmlinkage __visible void __init xen_start_kernel(void)
 {
 	struct physdev_set_iopl set_iopl;
 	unsigned long initrd_start = 0;
-	u64 pat;
 	int rc;
 
 	if (!xen_start_info)
@@ -1526,8 +1551,6 @@ asmlinkage __visible void __init xen_start_kernel(void)
 
 	/* Install Xen paravirt ops */
 	pv_info = xen_info;
-	if (xen_initial_domain())
-		pv_info.features |= PV_SUPPORTED_RTC;
 	pv_init_ops = xen_init_ops;
 	if (!xen_pvh_domain()) {
 		pv_cpu_ops = xen_cpu_ops;
@@ -1560,17 +1583,7 @@ asmlinkage __visible void __init xen_start_kernel(void)
 	__userpte_alloc_gfp &= ~__GFP_HIGHMEM;
 
 	/* Work out if we support NX */
-#if defined(CONFIG_X86_64) || defined(CONFIG_X86_PAE)
-	if ((cpuid_eax(0x80000000) & 0xffff0000) == 0x80000000 &&
-	    (cpuid_edx(0x80000001) & (1U << (X86_FEATURE_NX & 31)))) {
-		unsigned l, h;
-
-		__supported_pte_mask |= _PAGE_NX;
-		rdmsr(MSR_EFER, l, h);
-		l |= EFER_NX;
-		wrmsr(MSR_EFER, l, h);
-	}
-#endif
+	x86_configure_nx();
 
 	/* Get mfn list */
 	xen_build_dynamic_phys_to_machine();
@@ -1598,6 +1611,13 @@ asmlinkage __visible void __init xen_start_kernel(void)
 
 	machine_ops = xen_machine_ops;
 
+	/*
+	 * The only reliable way to retain the initial address of the
+	 * percpu gdt_page is to remember it here, so we can go and
+	 * mark it RW later, when the initial percpu area is freed.
+	 */
+	xen_initial_gdt = &per_cpu(gdt_page, 0);
+
 	xen_smp_init();
 
 #ifdef CONFIG_ACPI_NUMA
@@ -1619,13 +1639,6 @@ asmlinkage __visible void __init xen_start_kernel(void)
 	xen_setup_kernel_pagetable((pgd_t *)xen_start_info->pt_base,
 				   xen_start_info->nr_pages);
 	xen_reserve_special_pages();
-
-	/*
-	 * Modify the cache mode translation tables to match Xen's PAT
-	 * configuration.
-	 */
-	rdmsrl(MSR_IA32_CR_PAT, pat);
-	pat_init_cache_modes(pat);
 
 	/* keep using Xen gdt for now; no urgent need to change it */
 
@@ -1672,6 +1685,7 @@ asmlinkage __visible void __init xen_start_kernel(void)
 	boot_params.hdr.ramdisk_image = initrd_start;
 	boot_params.hdr.ramdisk_size = xen_start_info->mod_len;
 	boot_params.hdr.cmd_line_ptr = __pa(xen_start_info->cmd_line);
+	boot_params.hdr.hardware_subarch = X86_SUBARCH_XEN;
 
 	if (!xen_initial_domain()) {
 		add_preferred_console("xenboot", 0, NULL);
@@ -1689,6 +1703,8 @@ asmlinkage __visible void __init xen_start_kernel(void)
 			.u.firmware_info.type = XEN_FW_KBD_SHIFT_FLAGS,
 		};
 
+		x86_platform.set_legacy_features =
+				xen_dom0_set_legacy_features;
 		xen_init_vga(info, xen_start_info->console.dom0.info_size);
 		xen_start_info->console.domU.mfn = 0;
 		xen_start_info->console.domU.evtchn = 0;

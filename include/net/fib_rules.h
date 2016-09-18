@@ -7,7 +7,6 @@
 #include <linux/fib_rules.h>
 #include <net/flow.h>
 #include <net/rtnetlink.h>
-#include <net/ip6_fib.h>
 
 struct fib_rule {
 	struct list_head	list;
@@ -34,7 +33,7 @@ struct fib_rule {
 };
 
 struct fib_lookup_arg {
-	pol_lookup_t		lookup_ptr;
+	void			*lookup_ptr;
 	void			*result;
 	struct fib_rule		*rule;
 	int			flags;

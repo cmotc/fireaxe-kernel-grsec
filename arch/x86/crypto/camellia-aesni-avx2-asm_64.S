@@ -12,7 +12,6 @@
 
 #include <linux/linkage.h>
 #include <asm/frame.h>
-#include <asm/alternative-asm.h>
 
 #define CAMELLIA_TABLE_BYTE_LEN 272
 
@@ -232,7 +231,6 @@ roundsm32_x0_x1_x2_x3_x4_x5_x6_x7_y0_y1_y2_y3_y4_y5_y6_y7_cd:
 	roundsm32(%ymm0, %ymm1, %ymm2, %ymm3, %ymm4, %ymm5, %ymm6, %ymm7,
 		  %ymm8, %ymm9, %ymm10, %ymm11, %ymm12, %ymm13, %ymm14, %ymm15,
 		  %rcx, (%r9));
-	pax_force_retaddr
 	ret;
 ENDPROC(roundsm32_x0_x1_x2_x3_x4_x5_x6_x7_y0_y1_y2_y3_y4_y5_y6_y7_cd)
 
@@ -241,7 +239,6 @@ roundsm32_x4_x5_x6_x7_x0_x1_x2_x3_y4_y5_y6_y7_y0_y1_y2_y3_ab:
 	roundsm32(%ymm4, %ymm5, %ymm6, %ymm7, %ymm0, %ymm1, %ymm2, %ymm3,
 		  %ymm12, %ymm13, %ymm14, %ymm15, %ymm8, %ymm9, %ymm10, %ymm11,
 		  %rax, (%r9));
-	pax_force_retaddr
 	ret;
 ENDPROC(roundsm32_x4_x5_x6_x7_x0_x1_x2_x3_y4_y5_y6_y7_y0_y1_y2_y3_ab)
 
@@ -826,7 +823,6 @@ __camellia_enc_blk32:
 		    %ymm15, (key_table)(CTX, %r8, 8), (%rax), 1 * 32(%rax));
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 
 .align 8
@@ -914,7 +910,6 @@ __camellia_dec_blk32:
 		    %ymm15, (key_table)(CTX), (%rax), 1 * 32(%rax));
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 
 .align 8
@@ -934,7 +929,7 @@ __camellia_dec_blk32:
 	jmp .Ldec_max24;
 ENDPROC(__camellia_dec_blk32)
 
-RAP_ENTRY(camellia_ecb_enc_32way)
+ENTRY(camellia_ecb_enc_32way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst (32 blocks)
@@ -960,11 +955,10 @@ RAP_ENTRY(camellia_ecb_enc_32way)
 	vzeroupper;
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 ENDPROC(camellia_ecb_enc_32way)
 
-RAP_ENTRY(camellia_ecb_dec_32way)
+ENTRY(camellia_ecb_dec_32way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst (32 blocks)
@@ -995,11 +989,10 @@ RAP_ENTRY(camellia_ecb_dec_32way)
 	vzeroupper;
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 ENDPROC(camellia_ecb_dec_32way)
 
-RAP_ENTRY(camellia_cbc_dec_32way)
+ENTRY(camellia_cbc_dec_32way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst (32 blocks)
@@ -1064,7 +1057,6 @@ RAP_ENTRY(camellia_cbc_dec_32way)
 	vzeroupper;
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 ENDPROC(camellia_cbc_dec_32way)
 
@@ -1082,7 +1074,7 @@ ENDPROC(camellia_cbc_dec_32way)
 	vpslldq $8, tmp1, tmp1; \
 	vpsubq tmp1, x, x;
 
-RAP_ENTRY(camellia_ctr_32way)
+ENTRY(camellia_ctr_32way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst (32 blocks)
@@ -1205,7 +1197,6 @@ RAP_ENTRY(camellia_ctr_32way)
 	vzeroupper;
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 ENDPROC(camellia_ctr_32way)
 
@@ -1373,11 +1364,10 @@ camellia_xts_crypt_32way:
 	vzeroupper;
 
 	FRAME_END
-	pax_force_retaddr
 	ret;
 ENDPROC(camellia_xts_crypt_32way)
 
-RAP_ENTRY(camellia_xts_enc_32way)
+ENTRY(camellia_xts_enc_32way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst (32 blocks)
@@ -1392,7 +1382,7 @@ RAP_ENTRY(camellia_xts_enc_32way)
 	jmp camellia_xts_crypt_32way;
 ENDPROC(camellia_xts_enc_32way)
 
-RAP_ENTRY(camellia_xts_dec_32way)
+ENTRY(camellia_xts_dec_32way)
 	/* input:
 	 *	%rdi: ctx, CTX
 	 *	%rsi: dst (32 blocks)

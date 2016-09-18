@@ -107,7 +107,6 @@ config TRACING
 config GENERIC_TRACER
 	bool
 	select TRACING
-	depends on !GRKERNSEC_KMEM
 
 #
 # Minimum requirements an architecture has to meet for us to
@@ -121,7 +120,6 @@ config TRACING_SUPPORT
 	# irqflags tracing for your architecture.
 	depends on TRACE_IRQFLAGS_SUPPORT || PPC32
 	depends on STACKTRACE_SUPPORT
-	depends on !GRKERNSEC_KMEM
 	default y
 
 if TRACING_SUPPORT
@@ -227,7 +225,6 @@ config ENABLE_DEFAULT_TRACERS
 	bool "Trace process context switches and events"
 	depends on !GENERIC_TRACER
 	select TRACING
-	depends on !GRKERNSEC_KMEM
 	help
 	  This tracer hooks to various trace points in the kernel,
 	  allowing the user to pick and choose which trace point they
@@ -381,7 +378,6 @@ config BLK_DEV_IO_TRACE
 	depends on BLOCK
 	select RELAY
 	select DEBUG_FS
-	depends on !GRKERNSEC_KMEM
 	select TRACEPOINTS
 	select GENERIC_TRACER
 	select STACKTRACE
@@ -406,7 +402,6 @@ config KPROBE_EVENT
 	depends on HAVE_REGS_AND_STACK_ACCESS_API
 	bool "Enable kprobes-based dynamic events"
 	select TRACING
-	depends on !GRKERNSEC_KMEM
 	select PROBE_EVENTS
 	default y
 	help
@@ -428,7 +423,6 @@ config UPROBE_EVENT
 	select UPROBES
 	select PROBE_EVENTS
 	select TRACING
-	depends on !GRKERNSEC_KMEM
 	default n
 	help
 	  This allows the user to add tracing events on top of userspace
@@ -533,6 +527,32 @@ config MMIOTRACE
 
 	  See Documentation/trace/mmiotrace.txt.
 	  If you are not helping to develop drivers, say N.
+
+config TRACING_MAP
+	bool
+	depends on ARCH_HAVE_NMI_SAFE_CMPXCHG
+	help
+	  tracing_map is a special-purpose lock-free map for tracing,
+	  separated out as a stand-alone facility in order to allow it
+	  to be shared between multiple tracers.  It isn't meant to be
+	  generally used outside of that context, and is normally
+	  selected by tracers that use it.
+
+config HIST_TRIGGERS
+	bool "Histogram triggers"
+	depends on ARCH_HAVE_NMI_SAFE_CMPXCHG
+	select TRACING_MAP
+	default n
+	help
+	  Hist triggers allow one or more arbitrary trace event fields
+	  to be aggregated into hash tables and dumped to stdout by
+	  reading a debugfs/tracefs file.  They're useful for
+	  gathering quick and dirty (though precise) summaries of
+	  event activity as an initial guide for further investigation
+	  using more advanced tools.
+
+	  See Documentation/trace/events.txt.
+	  If in doubt, say N.
 
 config MMIOTRACE_TEST
 	tristate "Test module for mmiotrace"

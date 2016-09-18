@@ -12,7 +12,6 @@
 #include "writeback.h"
 
 #include <linux/delay.h>
-#include <linux/freezer.h>
 #include <linux/kthread.h>
 #include <trace/events/bcache.h>
 
@@ -118,16 +117,14 @@ static void dirty_init(struct keybuf_key *w)
 	bch_bio_map(bio, NULL);
 }
 
-static void dirty_io_destructor(struct work_struct *work)
+static void dirty_io_destructor(struct closure *cl)
 {
-	struct closure *cl = container_of(work, struct closure, work);
 	struct dirty_io *io = container_of(cl, struct dirty_io, cl);
 	kfree(io);
 }
 
-static void write_dirty_finish(struct work_struct *work)
+static void write_dirty_finish(struct closure *cl)
 {
-	struct closure *cl = container_of(work, struct closure, work);
 	struct dirty_io *io = container_of(cl, struct dirty_io, cl);
 	struct keybuf_key *w = io->bio.bi_private;
 	struct cached_dev *dc = io->dc;
@@ -179,9 +176,8 @@ static void dirty_endio(struct bio *bio)
 	closure_put(&io->cl);
 }
 
-static void write_dirty(struct work_struct *work)
+static void write_dirty(struct closure *cl)
 {
-	struct closure *cl = container_of(work, struct closure, work);
 	struct dirty_io *io = container_of(cl, struct dirty_io, cl);
 	struct keybuf_key *w = io->bio.bi_private;
 
@@ -207,9 +203,8 @@ static void read_dirty_endio(struct bio *bio)
 	dirty_endio(bio);
 }
 
-static void read_dirty_submit(struct work_struct *work)
+static void read_dirty_submit(struct closure *cl)
 {
-	struct closure *cl = container_of(work, struct closure, work);
 	struct dirty_io *io = container_of(cl, struct dirty_io, cl);
 
 	closure_bio_submit(&io->bio, cl);
@@ -232,7 +227,6 @@ static void read_dirty(struct cached_dev *dc)
 	 */
 
 	while (!kthread_should_stop()) {
-		try_to_freeze();
 
 		w = bch_keybuf_next(&dc->writeback_keys);
 		if (!w)
@@ -437,7 +431,6 @@ static int bch_writeback_thread(void *arg)
 			if (kthread_should_stop())
 				return 0;
 
-			try_to_freeze();
 			schedule();
 			continue;
 		}

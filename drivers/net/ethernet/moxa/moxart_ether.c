@@ -319,7 +319,7 @@ static irqreturn_t moxart_mac_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static netdev_tx_t moxart_mac_start_xmit(struct sk_buff *skb, struct net_device *ndev)
+static int moxart_mac_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 {
 	struct moxart_mac_priv_t *priv = netdev_priv(ndev);
 	void *desc;
@@ -376,7 +376,7 @@ static netdev_tx_t moxart_mac_start_xmit(struct sk_buff *skb, struct net_device 
 
 	priv->tx_head = TX_NEXT(tx_head);
 
-	ndev->trans_start = jiffies;
+	netif_trans_update(ndev);
 	ret = NETDEV_TX_OK;
 out_unlock:
 	spin_unlock_irq(&priv->txlock);

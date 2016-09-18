@@ -84,7 +84,7 @@ static void jfs_handle_error(struct super_block *sb)
 		panic("JFS (device %s): panic forced after error\n",
 			sb->s_id);
 	else if (sbi->flag & JFS_ERR_REMOUNT_RO) {
-		jfs_err("ERROR: (device %s): remounting filesystem as read-only\n",
+		jfs_err("ERROR: (device %s): remounting filesystem as read-only",
 			sb->s_id);
 		sb->s_flags |= MS_RDONLY;
 	}
@@ -641,7 +641,7 @@ static int jfs_freeze(struct super_block *sb)
 		}
 		rc = updateSuper(sb, FM_CLEAN);
 		if (rc) {
-			jfs_err("jfs_freeze: updateSuper failed\n");
+			jfs_err("jfs_freeze: updateSuper failed");
 			/*
 			 * Don't fail here. Everything succeeded except
 			 * marking the superblock clean, so there's really
@@ -898,7 +898,7 @@ static int __init init_jfs_fs(void)
 
 	jfs_inode_cachep =
 	    kmem_cache_create("jfs_ip", sizeof(struct jfs_inode_info), 0,
-			    SLAB_RECLAIM_ACCOUNT|SLAB_MEM_SPREAD|SLAB_ACCOUNT|SLAB_USERCOPY,
+			    SLAB_RECLAIM_ACCOUNT|SLAB_MEM_SPREAD|SLAB_ACCOUNT,
 			    init_once);
 	if (jfs_inode_cachep == NULL)
 		return -ENOMEM;

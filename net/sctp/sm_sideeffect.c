@@ -444,7 +444,7 @@ static void sctp_generate_sack_event(unsigned long data)
 	sctp_generate_timeout_event(asoc, SCTP_EVENT_TIMEOUT_SACK);
 }
 
-sctp_timer_event_t * const sctp_timer_events[SCTP_NUM_TIMEOUT_TYPES] = {
+sctp_timer_event_t *sctp_timer_events[SCTP_NUM_TIMEOUT_TYPES] = {
 	NULL,
 	sctp_generate_t1_cookie_event,
 	sctp_generate_t1_init_event,
@@ -1095,7 +1095,7 @@ int sctp_do_sm(struct net *net, sctp_event_t event_type, sctp_subtype_t subtype,
 	const sctp_sm_table_entry_t *state_fn;
 	sctp_disposition_t status;
 	int error = 0;
-	typedef const char *(printfn_t)(const sctp_subtype_t);
+	typedef const char *(printfn_t)(sctp_subtype_t);
 	static printfn_t *table[] = {
 		NULL, sctp_cname, sctp_tname, sctp_oname, sctp_pname,
 	};
@@ -1218,6 +1218,8 @@ static int sctp_cmd_interpreter(sctp_event_t event_type,
 				sctp_cmd_seq_t *commands,
 				gfp_t gfp)
 {
+	struct sock *sk = ep->base.sk;
+	struct sctp_sock *sp = sctp_sk(sk);
 	int error = 0;
 	int force;
 	sctp_cmd_t *cmd;
@@ -1738,6 +1740,10 @@ out:
 			error = sctp_outq_uncork(&asoc->outqueue, gfp);
 	} else if (local_cork)
 		error = sctp_outq_uncork(&asoc->outqueue, gfp);
+
+	if (sp->data_ready_signalled)
+		sp->data_ready_signalled = 0;
+
 	return error;
 nomem:
 	error = -ENOMEM;

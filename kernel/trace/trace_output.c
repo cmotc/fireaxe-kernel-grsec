@@ -717,16 +717,14 @@ int register_trace_event(struct trace_event *event)
 			goto out;
 	}
 
-	pax_open_kernel();
 	if (event->funcs->trace == NULL)
-		const_cast(event->funcs->trace) = trace_nop_print;
+		event->funcs->trace = trace_nop_print;
 	if (event->funcs->raw == NULL)
-		const_cast(event->funcs->raw) = trace_nop_print;
+		event->funcs->raw = trace_nop_print;
 	if (event->funcs->hex == NULL)
-		const_cast(event->funcs->hex) = trace_nop_print;
+		event->funcs->hex = trace_nop_print;
 	if (event->funcs->binary == NULL)
-		const_cast(event->funcs->binary) = trace_nop_print;
-	pax_close_kernel();
+		event->funcs->binary = trace_nop_print;
 
 	key = event->type & (EVENT_HASHSIZE - 1);
 

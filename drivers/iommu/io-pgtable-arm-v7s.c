@@ -49,6 +49,9 @@
 #define io_pgtable_to_data(x)						\
 	container_of((x), struct arm_v7s_io_pgtable, iop)
 
+#define io_pgtable_ops_to_data(x)					\
+	io_pgtable_to_data(io_pgtable_ops_to_pgtable(x))
+
 /*
  * We have 32 bits total; 12 bits resolved at level 1, 8 bits at level 2,
  * and 12 bits in a page. With some carefully-chosen coefficients we can
@@ -117,6 +120,8 @@
 #define ARM_V7S_TEX_SHIFT		2
 #define ARM_V7S_TEX_MASK		0x7
 #define ARM_V7S_ATTR_TEX(val)		(((val) & ARM_V7S_TEX_MASK) << ARM_V7S_TEX_SHIFT)
+
+#define ARM_V7S_ATTR_MTK_4GB		BIT(9) /* MTK extend it for 4GB mode */
 
 /* *well, except for TEX on level 2 large pages, of course :( */
 #define ARM_V7S_CONT_PAGE_TEX_SHIFT	6
@@ -255,9 +260,10 @@ static arm_v7s_iopte arm_v7s_prot_to_pte(int prot, int lvl,
 					 struct io_pgtable_cfg *cfg)
 {
 	bool ap = !(cfg->quirks & IO_PGTABLE_QUIRK_NO_PERMS);
-	arm_v7s_iopte pte = ARM_V7S_ATTR_NG | ARM_V7S_ATTR_S |
-			    ARM_V7S_ATTR_TEX(1);
+	arm_v7s_iopte pte = ARM_V7S_ATTR_NG | ARM_V7S_ATTR_S;
 
+	if (!(prot & IOMMU_MMIO))
+		pte |= ARM_V7S_ATTR_TEX(1);
 	if (ap) {
 		pte |= ARM_V7S_PTE_AF | ARM_V7S_PTE_AP_UNPRIV;
 		if (!(prot & IOMMU_WRITE))
@@ -267,7 +273,9 @@ static arm_v7s_iopte arm_v7s_prot_to_pte(int prot, int lvl,
 
 	if ((prot & IOMMU_NOEXEC) && ap)
 		pte |= ARM_V7S_ATTR_XN(lvl);
-	if (prot & IOMMU_CACHE)
+	if (prot & IOMMU_MMIO)
+		pte |= ARM_V7S_ATTR_B;
+	else if (prot & IOMMU_CACHE)
 		pte |= ARM_V7S_ATTR_B | ARM_V7S_ATTR_C;
 
 	return pte;
@@ -276,10 +284,13 @@ static arm_v7s_iopte arm_v7s_prot_to_pte(int prot, int lvl,
 static int arm_v7s_pte_to_prot(arm_v7s_iopte pte, int lvl)
 {
 	int prot = IOMMU_READ;
+	arm_v7s_iopte attr = pte >> ARM_V7S_ATTR_SHIFT(lvl);
 
-	if (pte & (ARM_V7S_PTE_AP_RDONLY << ARM_V7S_ATTR_SHIFT(lvl)))
+	if (attr & ARM_V7S_PTE_AP_RDONLY)
 		prot |= IOMMU_WRITE;
-	if (pte & ARM_V7S_ATTR_C)
+	if ((attr & (ARM_V7S_TEX_MASK << ARM_V7S_TEX_SHIFT)) == 0)
+		prot |= IOMMU_MMIO;
+	else if (pte & ARM_V7S_ATTR_C)
 		prot |= IOMMU_CACHE;
 
 	return prot;
@@ -361,6 +372,9 @@ static int arm_v7s_init_pte(struct arm_v7s_io_pgtable *data,
 	if (lvl == 1 && (cfg->quirks & IO_PGTABLE_QUIRK_ARM_NS))
 		pte |= ARM_V7S_ATTR_NS_SECTION;
 
+	if (cfg->quirks & IO_PGTABLE_QUIRK_ARM_MTK_4GB)
+		pte |= ARM_V7S_ATTR_MTK_4GB;
+
 	if (num_entries > 1)
 		pte = arm_v7s_pte_to_cont(pte, lvl);
 
@@ -410,10 +424,11 @@ static int __arm_v7s_map(struct arm_v7s_io_pgtable *data, unsigned long iova,
 	return __arm_v7s_map(data, iova, paddr, size, prot, lvl + 1, cptep);
 }
 
-static int arm_v7s_map(struct io_pgtable *iop, unsigned long iova,
+static int arm_v7s_map(struct io_pgtable_ops *ops, unsigned long iova,
 			phys_addr_t paddr, size_t size, int prot)
 {
-	struct arm_v7s_io_pgtable *data = io_pgtable_to_data(iop);
+	struct arm_v7s_io_pgtable *data = io_pgtable_ops_to_data(ops);
+	struct io_pgtable *iop = &data->iop;
 	int ret;
 
 	/* If no access, then nothing to do */
@@ -576,10 +591,10 @@ static int __arm_v7s_unmap(struct arm_v7s_io_pgtable *data,
 	return __arm_v7s_unmap(data, iova, size, lvl + 1, ptep);
 }
 
-static int arm_v7s_unmap(struct io_pgtable *iop, unsigned long iova,
+static int arm_v7s_unmap(struct io_pgtable_ops *ops, unsigned long iova,
 			 size_t size)
 {
-	struct arm_v7s_io_pgtable *data = io_pgtable_to_data(iop);
+	struct arm_v7s_io_pgtable *data = io_pgtable_ops_to_data(ops);
 	size_t unmapped;
 
 	unmapped = __arm_v7s_unmap(data, iova, size, 1, data->pgd);
@@ -589,10 +604,10 @@ static int arm_v7s_unmap(struct io_pgtable *iop, unsigned long iova,
 	return unmapped;
 }
 
-static phys_addr_t arm_v7s_iova_to_phys(struct io_pgtable *iop,
+static phys_addr_t arm_v7s_iova_to_phys(struct io_pgtable_ops *ops,
 					unsigned long iova)
 {
-	struct arm_v7s_io_pgtable *data = io_pgtable_to_data(iop);
+	struct arm_v7s_io_pgtable *data = io_pgtable_ops_to_data(ops);
 	arm_v7s_iopte *ptep = data->pgd, pte;
 	int lvl = 0;
 	u32 mask;
@@ -611,12 +626,6 @@ static phys_addr_t arm_v7s_iova_to_phys(struct io_pgtable *iop,
 	return (pte & mask) | (iova & ~mask);
 }
 
-static struct io_pgtable_ops arm_v7s_io_pgtable_ops = {
-	.map		= arm_v7s_map,
-	.unmap		= arm_v7s_unmap,
-	.iova_to_phys	= arm_v7s_iova_to_phys,
-};
-
 static struct io_pgtable *arm_v7s_alloc_pgtable(struct io_pgtable_cfg *cfg,
 						void *cookie)
 {
@@ -627,8 +636,14 @@ static struct io_pgtable *arm_v7s_alloc_pgtable(struct io_pgtable_cfg *cfg,
 
 	if (cfg->quirks & ~(IO_PGTABLE_QUIRK_ARM_NS |
 			    IO_PGTABLE_QUIRK_NO_PERMS |
-			    IO_PGTABLE_QUIRK_TLBI_ON_MAP))
+			    IO_PGTABLE_QUIRK_TLBI_ON_MAP |
+			    IO_PGTABLE_QUIRK_ARM_MTK_4GB))
 		return NULL;
+
+	/* If ARM_MTK_4GB is enabled, the NO_PERMS is also expected. */
+	if (cfg->quirks & IO_PGTABLE_QUIRK_ARM_MTK_4GB &&
+	    !(cfg->quirks & IO_PGTABLE_QUIRK_NO_PERMS))
+			return NULL;
 
 	data = kmalloc(sizeof(*data), GFP_KERNEL);
 	if (!data)
@@ -641,7 +656,11 @@ static struct io_pgtable *arm_v7s_alloc_pgtable(struct io_pgtable_cfg *cfg,
 	if (!data->l2_tables)
 		goto out_free_data;
 
-	data->iop.ops = &arm_v7s_io_pgtable_ops;
+	data->iop.ops = (struct io_pgtable_ops) {
+		.map		= arm_v7s_map,
+		.unmap		= arm_v7s_unmap,
+		.iova_to_phys	= arm_v7s_iova_to_phys,
+	};
 
 	/* We have to do this early for __arm_v7s_alloc_table to work... */
 	data->iop.cfg = *cfg;
@@ -730,7 +749,7 @@ static struct iommu_gather_ops dummy_tlb_ops = {
 
 static int __init arm_v7s_do_selftests(void)
 {
-	struct io_pgtable *pgtbl;
+	struct io_pgtable_ops *ops;
 	struct io_pgtable_cfg cfg = {
 		.tlb = &dummy_tlb_ops,
 		.oas = 32,
@@ -745,8 +764,8 @@ static int __init arm_v7s_do_selftests(void)
 
 	cfg_cookie = &cfg;
 
-	pgtbl = alloc_io_pgtable(ARM_V7S, &cfg, &cfg);
-	if (!pgtbl) {
+	ops = alloc_io_pgtable_ops(ARM_V7S, &cfg, &cfg);
+	if (!ops) {
 		pr_err("selftest: failed to allocate io pgtable ops\n");
 		return -EINVAL;
 	}
@@ -755,13 +774,13 @@ static int __init arm_v7s_do_selftests(void)
 	 * Initial sanity checks.
 	 * Empty page tables shouldn't provide any translations.
 	 */
-	if (pgtbl->ops->iova_to_phys(pgtbl, 42))
+	if (ops->iova_to_phys(ops, 42))
 		return __FAIL(ops);
 
-	if (pgtbl->ops->iova_to_phys(pgtbl, SZ_1G + 42))
+	if (ops->iova_to_phys(ops, SZ_1G + 42))
 		return __FAIL(ops);
 
-	if (pgtbl->ops->iova_to_phys(pgtbl, SZ_2G + 42))
+	if (ops->iova_to_phys(ops, SZ_2G + 42))
 		return __FAIL(ops);
 
 	/*
@@ -771,18 +790,18 @@ static int __init arm_v7s_do_selftests(void)
 	i = find_first_bit(&cfg.pgsize_bitmap, BITS_PER_LONG);
 	while (i != BITS_PER_LONG) {
 		size = 1UL << i;
-		if (pgtbl->ops->map(pgtbl, iova, iova, size, IOMMU_READ |
+		if (ops->map(ops, iova, iova, size, IOMMU_READ |
 						    IOMMU_WRITE |
 						    IOMMU_NOEXEC |
 						    IOMMU_CACHE))
 			return __FAIL(ops);
 
 		/* Overlapping mappings */
-		if (!pgtbl->ops->map(pgtbl, iova, iova + size, size,
+		if (!ops->map(ops, iova, iova + size, size,
 			      IOMMU_READ | IOMMU_NOEXEC))
 			return __FAIL(ops);
 
-		if (pgtbl->ops->iova_to_phys(pgtbl, iova + 42) != (iova + 42))
+		if (ops->iova_to_phys(ops, iova + 42) != (iova + 42))
 			return __FAIL(ops);
 
 		iova += SZ_16M;
@@ -796,14 +815,14 @@ static int __init arm_v7s_do_selftests(void)
 	size = 1UL << __ffs(cfg.pgsize_bitmap);
 	while (i < loopnr) {
 		iova_start = i * SZ_16M;
-		if (pgtbl->ops->unmap(pgtbl, iova_start + size, size) != size)
+		if (ops->unmap(ops, iova_start + size, size) != size)
 			return __FAIL(ops);
 
 		/* Remap of partial unmap */
-		if (pgtbl->ops->map(pgtbl, iova_start + size, size, size, IOMMU_READ))
+		if (ops->map(ops, iova_start + size, size, size, IOMMU_READ))
 			return __FAIL(ops);
 
-		if (pgtbl->ops->iova_to_phys(pgtbl, iova_start + size + 42)
+		if (ops->iova_to_phys(ops, iova_start + size + 42)
 		    != (size + 42))
 			return __FAIL(ops);
 		i++;
@@ -815,17 +834,17 @@ static int __init arm_v7s_do_selftests(void)
 	while (i != BITS_PER_LONG) {
 		size = 1UL << i;
 
-		if (pgtbl->ops->unmap(pgtbl, iova, size) != size)
+		if (ops->unmap(ops, iova, size) != size)
 			return __FAIL(ops);
 
-		if (pgtbl->ops->iova_to_phys(pgtbl, iova + 42))
+		if (ops->iova_to_phys(ops, iova + 42))
 			return __FAIL(ops);
 
 		/* Remap full block */
-		if (pgtbl->ops->map(pgtbl, iova, iova, size, IOMMU_WRITE))
+		if (ops->map(ops, iova, iova, size, IOMMU_WRITE))
 			return __FAIL(ops);
 
-		if (pgtbl->ops->iova_to_phys(pgtbl, iova + 42) != (iova + 42))
+		if (ops->iova_to_phys(ops, iova + 42) != (iova + 42))
 			return __FAIL(ops);
 
 		iova += SZ_16M;
@@ -833,7 +852,7 @@ static int __init arm_v7s_do_selftests(void)
 		i = find_next_bit(&cfg.pgsize_bitmap, BITS_PER_LONG, i);
 	}
 
-	free_io_pgtable(pgtbl);
+	free_io_pgtable_ops(ops);
 
 	selftest_running = false;
 

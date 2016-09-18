@@ -544,9 +544,8 @@ static int src_mgr_commit_write(struct src_mgr *mgr)
 	return 0;
 }
 
-int src_mgr_create(struct hw *hw, void **_rsrc_mgr)
+int src_mgr_create(struct hw *hw, struct src_mgr **rsrc_mgr)
 {
-	struct src_mgr **rsrc_mgr = (struct src_mgr **)_rsrc_mgr;
 	int err, i;
 	struct src_mgr *src_mgr;
 
@@ -585,10 +584,8 @@ error1:
 	return err;
 }
 
-int src_mgr_destroy(void *_src_mgr)
+int src_mgr_destroy(struct src_mgr *src_mgr)
 {
-	struct src_mgr *src_mgr = _src_mgr;
-
 	rsc_mgr_uninit(&src_mgr->mgr);
 	kfree(src_mgr);
 
@@ -831,9 +828,8 @@ static int srcimp_imap_delete(struct srcimp_mgr *mgr, struct imapper *entry)
 	return err;
 }
 
-int srcimp_mgr_create(struct hw *hw, void **_rsrcimp_mgr)
+int srcimp_mgr_create(struct hw *hw, struct srcimp_mgr **rsrcimp_mgr)
 {
-	struct srcimp_mgr **rsrcimp_mgr = (struct srcimp_mgr **)_rsrcimp_mgr;
 	int err;
 	struct srcimp_mgr *srcimp_mgr;
 	struct imapper *entry;
@@ -877,9 +873,8 @@ error1:
 	return err;
 }
 
-int srcimp_mgr_destroy(void *_srcimp_mgr)
+int srcimp_mgr_destroy(struct srcimp_mgr *srcimp_mgr)
 {
-	struct srcimp_mgr *srcimp_mgr = _srcimp_mgr;
 	unsigned long flags;
 
 	/* free src input mapper list */

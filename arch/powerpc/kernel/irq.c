@@ -66,6 +66,7 @@
 #include <asm/udbg.h>
 #include <asm/smp.h>
 #include <asm/debug.h>
+#include <asm/livepatch.h>
 
 #ifdef CONFIG_PPC64
 #include <asm/paca.h>
@@ -460,8 +461,6 @@ void migrate_irqs(void)
 }
 #endif
 
-extern void gr_handle_kernel_exploit(void);
-
 static inline void check_stack_overflow(void)
 {
 #ifdef CONFIG_DEBUG_STACKOVERFLOW
@@ -474,7 +473,6 @@ static inline void check_stack_overflow(void)
 		pr_err("do_IRQ: stack overflow: %ld\n",
 			sp - sizeof(struct thread_info));
 		dump_stack();
-		gr_handle_kernel_exploit();
 	}
 #endif
 }
@@ -610,10 +608,12 @@ void irq_ctx_init(void)
 		memset((void *)softirq_ctx[i], 0, THREAD_SIZE);
 		tp = softirq_ctx[i];
 		tp->cpu = i;
+		klp_init_thread_info(tp);
 
 		memset((void *)hardirq_ctx[i], 0, THREAD_SIZE);
 		tp = hardirq_ctx[i];
 		tp->cpu = i;
+		klp_init_thread_info(tp);
 	}
 }
 

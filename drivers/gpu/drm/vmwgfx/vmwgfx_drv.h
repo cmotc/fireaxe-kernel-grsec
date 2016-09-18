@@ -386,6 +386,7 @@ struct vmw_private {
 	spinlock_t hw_lock;
 	spinlock_t cap_lock;
 	bool has_dx;
+	bool assume_16bpp;
 
 	/*
 	 * VGA registers.
@@ -437,7 +438,7 @@ struct vmw_private {
 	 * Fencing and IRQs.
 	 */
 
-	atomic_unchecked_t marker_seq;
+	atomic_t marker_seq;
 	wait_queue_head_t fence_queue;
 	wait_queue_head_t fifo_queue;
 	spinlock_t waiter_lock;
@@ -1235,4 +1236,10 @@ static inline void vmw_mmio_write(u32 value, u32 *addr)
 {
 	WRITE_ONCE(*addr, value);
 }
+
+/**
+ * Add vmw_msg module function
+ */
+extern int vmw_host_log(const char *log);
+
 #endif

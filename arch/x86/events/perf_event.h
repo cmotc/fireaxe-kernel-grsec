@@ -601,6 +601,7 @@ struct x86_pmu {
 	u64		lbr_sel_mask;		   /* LBR_SELECT valid bits */
 	const int	*lbr_sel_map;		   /* lbr_select mappings */
 	bool		lbr_double_abort;	   /* duplicated lbr aborts */
+	bool		lbr_pt_coexist;		   /* LBR may coexist with PT */
 
 	/*
 	 * Intel PT/LBR/BTS are exclusive
@@ -792,7 +793,7 @@ static inline void set_linear_ip(struct pt_regs *regs, unsigned long ip)
 	regs->cs = kernel_ip(ip) ? __KERNEL_CS : __USER_CS;
 	if (regs->flags & X86_VM_MASK)
 		regs->flags ^= (PERF_EFLAGS_VM | X86_VM_MASK);
-	regs->ip = kernel_ip(ip) ? ktva_ktla(ip) : ip;
+	regs->ip = ip;
 }
 
 ssize_t x86_event_sysfs_show(char *page, u64 config, u64 event);
@@ -859,6 +860,8 @@ extern struct event_constraint intel_atom_pebs_event_constraints[];
 
 extern struct event_constraint intel_slm_pebs_event_constraints[];
 
+extern struct event_constraint intel_glm_pebs_event_constraints[];
+
 extern struct event_constraint intel_nehalem_pebs_event_constraints[];
 
 extern struct event_constraint intel_westmere_pebs_event_constraints[];
@@ -906,6 +909,8 @@ void intel_pmu_lbr_init_core(void);
 void intel_pmu_lbr_init_nhm(void);
 
 void intel_pmu_lbr_init_atom(void);
+
+void intel_pmu_lbr_init_slm(void);
 
 void intel_pmu_lbr_init_snb(void);
 

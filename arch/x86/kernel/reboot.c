@@ -70,11 +70,6 @@ static int __init set_bios_reboot(const struct dmi_system_id *d)
 
 void __noreturn machine_real_restart(unsigned int type)
 {
-
-#if defined(CONFIG_X86_32) && (defined(CONFIG_PAX_KERNEXEC) || defined(CONFIG_PAX_MEMORY_UDEREF))
-	struct desc_struct *gdt;
-#endif
-
 	local_irq_disable();
 
 	/*
@@ -102,29 +97,7 @@ void __noreturn machine_real_restart(unsigned int type)
 
 	/* Jump to the identity-mapped low memory code */
 #ifdef CONFIG_X86_32
-
-#if defined(CONFIG_PAX_KERNEXEC) || defined(CONFIG_PAX_MEMORY_UDEREF)
-	gdt = get_cpu_gdt_table(smp_processor_id());
-	pax_open_kernel();
-#ifdef CONFIG_PAX_MEMORY_UDEREF
-	gdt[GDT_ENTRY_KERNEL_DS].type = 3;
-	gdt[GDT_ENTRY_KERNEL_DS].limit = 0xf;
-	loadsegment(ds, __KERNEL_DS);
-	loadsegment(es, __KERNEL_DS);
-	loadsegment(ss, __KERNEL_DS);
-#endif
-#ifdef CONFIG_PAX_KERNEXEC
-	gdt[GDT_ENTRY_KERNEL_CS].base0 = 0;
-	gdt[GDT_ENTRY_KERNEL_CS].base1 = 0;
-	gdt[GDT_ENTRY_KERNEL_CS].base2 = 0;
-	gdt[GDT_ENTRY_KERNEL_CS].limit0 = 0xffff;
-	gdt[GDT_ENTRY_KERNEL_CS].limit = 0xf;
-	gdt[GDT_ENTRY_KERNEL_CS].g = 1;
-#endif
-	pax_close_kernel();
-#endif
-
-	asm volatile("ljmpl *%0" : :
+	asm volatile("jmpl *%0" : :
 		     "rm" (real_mode_header->machine_real_restart_asm),
 		     "a" (type));
 #else
@@ -164,7 +137,7 @@ static int __init set_kbd_reboot(const struct dmi_system_id *d)
 /*
  * This is a single dmi_table handling all reboot quirks.
  */
-static const struct dmi_system_id __initconst reboot_dmi_table[] = {
+static struct dmi_system_id __initdata reboot_dmi_table[] = {
 
 	/* Acer */
 	{	/* Handle reboot issue on Acer Aspire one */
@@ -546,7 +519,7 @@ void __attribute__((weak)) mach_reboot_fixups(void)
  * This means that this function can never return, it can misbehave
  * by not rebooting properly and hanging.
  */
-static void __noreturn native_machine_emergency_restart(void)
+static void native_machine_emergency_restart(void)
 {
 	int i;
 	int attempt = 0;
@@ -561,6 +534,15 @@ static void __noreturn native_machine_emergency_restart(void)
 	/* Tell the BIOS if we want cold or warm reboot */
 	mode = reboot_mode == REBOOT_WARM ? 0x1234 : 0;
 	*((unsigned short *)__va(0x472)) = mode;
+
+	/*
+	 * If an EFI capsule has been registered with the firmware then
+	 * override the reboot= parameter.
+	 */
+	if (efi_capsule_pending(NULL)) {
+		pr_info("EFI capsule is pending, forcing EFI reboot.\n");
+		reboot_type = BOOT_EFI;
+	}
 
 	for (;;) {
 		/* Could also try the reset bit in the Hammer NB */
@@ -666,13 +648,13 @@ void native_machine_shutdown(void)
 #endif
 }
 
-static void __noreturn __machine_emergency_restart(int emergency)
+static void __machine_emergency_restart(int emergency)
 {
 	reboot_emergency = emergency;
 	machine_ops.emergency_restart();
 }
 
-static void __noreturn native_machine_restart(char *__unused)
+static void native_machine_restart(char *__unused)
 {
 	pr_notice("machine restart\n");
 
@@ -681,7 +663,7 @@ static void __noreturn native_machine_restart(char *__unused)
 	__machine_emergency_restart(0);
 }
 
-static void __noreturn native_machine_halt(void)
+static void native_machine_halt(void)
 {
 	/* Stop other cpus and apics */
 	machine_shutdown();
@@ -691,7 +673,7 @@ static void __noreturn native_machine_halt(void)
 	stop_this_cpu(NULL);
 }
 
-static void __noreturn native_machine_power_off(void)
+static void native_machine_power_off(void)
 {
 	if (pm_power_off) {
 		if (!reboot_force)
@@ -700,10 +682,9 @@ static void __noreturn native_machine_power_off(void)
 	}
 	/* A fallback in case there is no PM info available */
 	tboot_shutdown(TB_SHUTDOWN_HALT);
-	unreachable();
 }
 
-struct machine_ops machine_ops __read_only = {
+struct machine_ops machine_ops = {
 	.power_off = native_machine_power_off,
 	.shutdown = native_machine_shutdown,
 	.emergency_restart = native_machine_emergency_restart,

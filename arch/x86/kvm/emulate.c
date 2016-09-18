@@ -972,7 +972,7 @@ static int em_bsr_c(struct x86_emulate_ctxt *ctxt)
 static __always_inline u8 test_cc(unsigned int condition, unsigned long flags)
 {
 	u8 rc;
-	void (*fop)(struct fastop *) = (void *)em_setcc + 4 * (condition & 0xf);
+	void (*fop)(void) = (void *)em_setcc + 4 * (condition & 0xf);
 
 	flags = (flags & EFLAGS_MASK) | X86_EFLAGS_IF;
 	asm("push %[flags]; popf; call *%[fastop]"
@@ -1894,7 +1894,7 @@ static int em_push_sreg(struct x86_emulate_ctxt *ctxt)
 static int em_pop_sreg(struct x86_emulate_ctxt *ctxt)
 {
 	int seg = ctxt->src2.val;
-	u16 selector;
+	unsigned long selector;
 	int rc;
 
 	rc = emulate_pop(ctxt, &selector, 2);
@@ -1906,7 +1906,7 @@ static int em_pop_sreg(struct x86_emulate_ctxt *ctxt)
 	if (ctxt->op_bytes > 2)
 		rsp_increment(ctxt, ctxt->op_bytes - 2);
 
-	rc = load_segment_descriptor(ctxt, selector, seg);
+	rc = load_segment_descriptor(ctxt, (u16)selector, seg);
 	return rc;
 }
 
@@ -3883,7 +3883,7 @@ static int check_cr_write(struct x86_emulate_ctxt *ctxt)
 	int cr = ctxt->modrm_reg;
 	u64 efer = 0;
 
-	static const u64 cr_reserved_bits[] = {
+	static u64 cr_reserved_bits[] = {
 		0xffffffff00000000ULL,
 		0, 0, 0, /* CR3 checked later */
 		CR4_RESERVED_BITS,
@@ -4969,10 +4969,7 @@ done_prefixes:
 	if (ctxt->d == 0)
 		return EMULATION_FAILED;
 
-	if (ctxt->d & Fastop)
-		ctxt->u.fastop = opcode.u.fastop;
-	else
-		ctxt->u.execute = opcode.u.execute;
+	ctxt->execute = opcode.u.execute;
 
 	if (unlikely(ctxt->ud) && likely(!(ctxt->d & EmulateOnUD)))
 		return EMULATION_FAILED;
@@ -5287,14 +5284,15 @@ special_insn:
 	else
 		ctxt->eflags &= ~X86_EFLAGS_RF;
 
-	if (ctxt->u.execute) {
+	if (ctxt->execute) {
 		if (ctxt->d & Fastop) {
-			rc = fastop(ctxt, ctxt->u.fastop);
+			void (*fop)(struct fastop *) = (void *)ctxt->execute;
+			rc = fastop(ctxt, fop);
 			if (rc != X86EMUL_CONTINUE)
 				goto done;
 			goto writeback;
 		}
-		rc = ctxt->u.execute(ctxt);
+		rc = ctxt->execute(ctxt);
 		if (rc != X86EMUL_CONTINUE)
 			goto done;
 		goto writeback;

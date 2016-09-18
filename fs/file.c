@@ -16,7 +16,6 @@
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/file.h>
-#include <linux/security.h>
 #include <linux/fdtable.h>
 #include <linux/bitops.h>
 #include <linux/interrupt.h>
@@ -164,10 +163,9 @@ out:
  * Return <0 error code on error; 1 on successful completion.
  * The files->file_lock should be held on entry, and will be held on exit.
  */
-static int expand_fdtable(struct files_struct *files, unsigned int nr)
-	__releases(&files->file_lock)
-	__acquires(&files->file_lock);
-static int expand_fdtable(struct files_struct *files, unsigned int nr)
+static int expand_fdtable(struct files_struct *files, int nr)
+	__releases(files->file_lock)
+	__acquires(files->file_lock)
 {
 	struct fdtable *new_fdt, *cur_fdt;
 
@@ -210,10 +208,9 @@ static int expand_fdtable(struct files_struct *files, unsigned int nr)
  * expanded and execution may have blocked.
  * The files->file_lock should be held on entry, and will be held on exit.
  */
-static int expand_files(struct files_struct *files, unsigned int nr)
-	__releases(&files->file_lock)
-	__acquires(&files->file_lock);
-static int expand_files(struct files_struct *files, unsigned int nr)
+static int expand_files(struct files_struct *files, int nr)
+	__releases(files->file_lock)
+	__acquires(files->file_lock)
 {
 	struct fdtable *fdt;
 	int expanded = 0;
@@ -787,6 +784,11 @@ unsigned long __fdget_pos(unsigned int fd)
 	return v;
 }
 
+void __f_unlock_pos(struct file *f)
+{
+	mutex_unlock(&f->f_pos_lock);
+}
+
 /*
  * We only lock f_pos if we have threads or if the file might be
  * shared with another process. In both cases we'll have an elevated
@@ -820,9 +822,7 @@ bool get_close_on_exec(unsigned int fd)
 
 static int do_dup2(struct files_struct *files,
 	struct file *file, unsigned fd, unsigned flags)
-__releases(&files->file_lock);
-static int do_dup2(struct files_struct *files,
-	struct file *file, unsigned fd, unsigned flags)
+__releases(&files->file_lock)
 {
 	struct file *tofree;
 	struct fdtable *fdt;
@@ -872,7 +872,6 @@ int replace_fd(unsigned fd, struct file *file, unsigned flags)
 	if (!file)
 		return __close_fd(files, fd);
 
-	gr_learn_resource(current, RLIMIT_NOFILE, fd, 0);
 	if (fd >= rlimit(RLIMIT_NOFILE))
 		return -EBADF;
 
@@ -899,7 +898,6 @@ SYSCALL_DEFINE3(dup3, unsigned int, oldfd, unsigned int, newfd, int, flags)
 	if (unlikely(oldfd == newfd))
 		return -EINVAL;
 
-	gr_learn_resource(current, RLIMIT_NOFILE, newfd, 0);
 	if (newfd >= rlimit(RLIMIT_NOFILE))
 		return -EBADF;
 
@@ -955,7 +953,6 @@ SYSCALL_DEFINE1(dup, unsigned int, fildes)
 int f_dupfd(unsigned int from, struct file *file, unsigned flags)
 {
 	int err;
-	gr_learn_resource(current, RLIMIT_NOFILE, from, 0);
 	if (from >= rlimit(RLIMIT_NOFILE))
 		return -EINVAL;
 	err = alloc_fd(from, flags);

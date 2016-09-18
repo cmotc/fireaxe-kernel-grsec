@@ -72,10 +72,9 @@ nlm4svc_proc_null(struct svc_rqst *rqstp, void *argp, void *resp)
  * TEST: Check for conflicting lock
  */
 static __be32
-nlm4svc_proc_test(struct svc_rqst *rqstp, void *_argp, void *_resp)
+nlm4svc_proc_test(struct svc_rqst *rqstp, struct nlm_args *argp,
+				         struct nlm_res  *resp)
 {
-	struct nlm_args *argp = _argp;
-	struct nlm_res  *resp = _resp;
 	struct nlm_host	*host;
 	struct nlm_file	*file;
 	__be32 rc = rpc_success;
@@ -100,10 +99,9 @@ nlm4svc_proc_test(struct svc_rqst *rqstp, void *_argp, void *_resp)
 }
 
 static __be32
-nlm4svc_proc_lock(struct svc_rqst *rqstp, void *_argp, void *_resp)
+nlm4svc_proc_lock(struct svc_rqst *rqstp, struct nlm_args *argp,
+				         struct nlm_res  *resp)
 {
-	struct nlm_args *argp = _argp;
-	struct nlm_res  *resp = _resp;
 	struct nlm_host	*host;
 	struct nlm_file	*file;
 	__be32 rc = rpc_success;
@@ -143,10 +141,9 @@ nlm4svc_proc_lock(struct svc_rqst *rqstp, void *_argp, void *_resp)
 }
 
 static __be32
-nlm4svc_proc_cancel(struct svc_rqst *rqstp, void *_argp, void *_resp)
+nlm4svc_proc_cancel(struct svc_rqst *rqstp, struct nlm_args *argp,
+				           struct nlm_res  *resp)
 {
-	struct nlm_args *argp = _argp;
-	struct nlm_res  *resp = _resp;
 	struct nlm_host	*host;
 	struct nlm_file	*file;
 
@@ -177,10 +174,9 @@ nlm4svc_proc_cancel(struct svc_rqst *rqstp, void *_argp, void *_resp)
  * UNLOCK: release a lock
  */
 static __be32
-nlm4svc_proc_unlock(struct svc_rqst *rqstp, void *_argp, void *_resp)
+nlm4svc_proc_unlock(struct svc_rqst *rqstp, struct nlm_args *argp,
+				           struct nlm_res  *resp)
 {
-	struct nlm_args *argp = _argp;
-	struct nlm_res  *resp = _resp;
 	struct nlm_host	*host;
 	struct nlm_file	*file;
 
@@ -212,11 +208,9 @@ nlm4svc_proc_unlock(struct svc_rqst *rqstp, void *_argp, void *_resp)
  * was granted
  */
 static __be32
-nlm4svc_proc_granted(struct svc_rqst *rqstp, void *_argp, void *_resp)
+nlm4svc_proc_granted(struct svc_rqst *rqstp, struct nlm_args *argp,
+				            struct nlm_res  *resp)
 {
-	struct nlm_args *argp = _argp;
-	struct nlm_res  *resp = _resp;
-
 	resp->cookie = argp->cookie;
 
 	dprintk("lockd: GRANTED       called\n");
@@ -250,7 +244,7 @@ static const struct rpc_call_ops nlm4svc_callback_ops = {
  * doesn't break any clients.
  */
 static __be32 nlm4svc_callback(struct svc_rqst *rqstp, u32 proc, struct nlm_args *argp,
-		__be32 (*func)(struct svc_rqst *, void *, void *))
+		__be32 (*func)(struct svc_rqst *, struct nlm_args *, struct nlm_res  *))
 {
 	struct nlm_host	*host;
 	struct nlm_rqst	*call;
@@ -279,35 +273,35 @@ static __be32 nlm4svc_callback(struct svc_rqst *rqstp, u32 proc, struct nlm_args
 	return rpc_success;
 }
 
-static __be32 nlm4svc_proc_test_msg(struct svc_rqst *rqstp, void *argp,
+static __be32 nlm4svc_proc_test_msg(struct svc_rqst *rqstp, struct nlm_args *argp,
 					     void	     *resp)
 {
 	dprintk("lockd: TEST_MSG      called\n");
 	return nlm4svc_callback(rqstp, NLMPROC_TEST_RES, argp, nlm4svc_proc_test);
 }
 
-static __be32 nlm4svc_proc_lock_msg(struct svc_rqst *rqstp, void *argp,
+static __be32 nlm4svc_proc_lock_msg(struct svc_rqst *rqstp, struct nlm_args *argp,
 					     void	     *resp)
 {
 	dprintk("lockd: LOCK_MSG      called\n");
 	return nlm4svc_callback(rqstp, NLMPROC_LOCK_RES, argp, nlm4svc_proc_lock);
 }
 
-static __be32 nlm4svc_proc_cancel_msg(struct svc_rqst *rqstp, void *argp,
+static __be32 nlm4svc_proc_cancel_msg(struct svc_rqst *rqstp, struct nlm_args *argp,
 					       void	       *resp)
 {
 	dprintk("lockd: CANCEL_MSG    called\n");
 	return nlm4svc_callback(rqstp, NLMPROC_CANCEL_RES, argp, nlm4svc_proc_cancel);
 }
 
-static __be32 nlm4svc_proc_unlock_msg(struct svc_rqst *rqstp, void *argp,
+static __be32 nlm4svc_proc_unlock_msg(struct svc_rqst *rqstp, struct nlm_args *argp,
                                                void            *resp)
 {
 	dprintk("lockd: UNLOCK_MSG    called\n");
 	return nlm4svc_callback(rqstp, NLMPROC_UNLOCK_RES, argp, nlm4svc_proc_unlock);
 }
 
-static __be32 nlm4svc_proc_granted_msg(struct svc_rqst *rqstp, void *argp,
+static __be32 nlm4svc_proc_granted_msg(struct svc_rqst *rqstp, struct nlm_args *argp,
                                                 void            *resp)
 {
 	dprintk("lockd: GRANTED_MSG   called\n");
@@ -318,10 +312,9 @@ static __be32 nlm4svc_proc_granted_msg(struct svc_rqst *rqstp, void *argp,
  * SHARE: create a DOS share or alter existing share.
  */
 static __be32
-nlm4svc_proc_share(struct svc_rqst *rqstp, void *_argp, void *_resp)
+nlm4svc_proc_share(struct svc_rqst *rqstp, struct nlm_args *argp,
+				          struct nlm_res  *resp)
 {
-	struct nlm_args *argp = _argp;
-	struct nlm_res  *resp = _resp;
 	struct nlm_host	*host;
 	struct nlm_file	*file;
 
@@ -352,10 +345,9 @@ nlm4svc_proc_share(struct svc_rqst *rqstp, void *_argp, void *_resp)
  * UNSHARE: Release a DOS share.
  */
 static __be32
-nlm4svc_proc_unshare(struct svc_rqst *rqstp, void *_argp, void *_resp)
+nlm4svc_proc_unshare(struct svc_rqst *rqstp, struct nlm_args *argp,
+				            struct nlm_res  *resp)
 {
-	struct nlm_args *argp = _argp;
-	struct nlm_res  *resp = _resp;
 	struct nlm_host	*host;
 	struct nlm_file	*file;
 
@@ -386,10 +378,9 @@ nlm4svc_proc_unshare(struct svc_rqst *rqstp, void *_argp, void *_resp)
  * NM_LOCK: Create an unmonitored lock
  */
 static __be32
-nlm4svc_proc_nm_lock(struct svc_rqst *rqstp, void *_argp, void *resp)
+nlm4svc_proc_nm_lock(struct svc_rqst *rqstp, struct nlm_args *argp,
+				            struct nlm_res  *resp)
 {
-	struct nlm_args *argp = _argp;
-
 	dprintk("lockd: NM_LOCK       called\n");
 
 	argp->monitor = 0;		/* just clean the monitor flag */
@@ -400,7 +391,8 @@ nlm4svc_proc_nm_lock(struct svc_rqst *rqstp, void *_argp, void *resp)
  * FREE_ALL: Release all locks and shares held by client
  */
 static __be32
-nlm4svc_proc_free_all(struct svc_rqst *rqstp, void *argp, void *resp)
+nlm4svc_proc_free_all(struct svc_rqst *rqstp, struct nlm_args *argp,
+					     void            *resp)
 {
 	struct nlm_host	*host;
 
@@ -417,7 +409,7 @@ nlm4svc_proc_free_all(struct svc_rqst *rqstp, void *argp, void *resp)
  * SM_NOTIFY: private callback from statd (not part of official NLM proto)
  */
 static __be32
-nlm4svc_proc_sm_notify(struct svc_rqst *rqstp, void *argp,
+nlm4svc_proc_sm_notify(struct svc_rqst *rqstp, struct nlm_reboot *argp,
 					      void	        *resp)
 {
 	dprintk("lockd: SM_NOTIFY     called\n");
@@ -437,10 +429,9 @@ nlm4svc_proc_sm_notify(struct svc_rqst *rqstp, void *argp,
  * client sent a GRANTED_RES, let's remove the associated block
  */
 static __be32
-nlm4svc_proc_granted_res(struct svc_rqst *rqstp, void *_argp, void *resp)
+nlm4svc_proc_granted_res(struct svc_rqst *rqstp, struct nlm_res  *argp,
+                                                void            *resp)
 {
-	struct nlm_res *argp = _argp;
-
         if (!nlmsvc_ops)
                 return rpc_success;
 
@@ -472,9 +463,9 @@ nlm4svc_proc_granted_res(struct svc_rqst *rqstp, void *_argp, void *resp)
 struct nlm_void			{ int dummy; };
 
 #define PROC(name, xargt, xrest, argt, rest, respsize)	\
- { .pc_func	= nlm4svc_proc_##name,			\
-   .pc_decode	= nlm4svc_decode_##xargt,		\
-   .pc_encode	= nlm4svc_encode_##xrest,		\
+ { .pc_func	= (svc_procfunc) nlm4svc_proc_##name,	\
+   .pc_decode	= (kxdrproc_t) nlm4svc_decode_##xargt,	\
+   .pc_encode	= (kxdrproc_t) nlm4svc_encode_##xrest,	\
    .pc_release	= NULL,					\
    .pc_argsize	= sizeof(struct nlm_##argt),		\
    .pc_ressize	= sizeof(struct nlm_##rest),		\

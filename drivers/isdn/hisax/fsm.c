@@ -85,9 +85,8 @@ FsmChangeState(struct FsmInst *fi, int newstate)
 }
 
 static void
-FsmExpireTimer(unsigned long _ft)
+FsmExpireTimer(struct FsmTimer *ft)
 {
-	struct FsmTimer *ft = (struct FsmTimer *)_ft;
 #if FSM_TIMER_DEBUG
 	if (ft->fi->debug)
 		ft->fi->printdebug(ft->fi, "FsmExpireTimer %lx", (long) ft);
@@ -99,7 +98,7 @@ void
 FsmInitTimer(struct FsmInst *fi, struct FsmTimer *ft)
 {
 	ft->fi = fi;
-	ft->tl.function = FsmExpireTimer;
+	ft->tl.function = (void *) FsmExpireTimer;
 	ft->tl.data = (long) ft;
 #if FSM_TIMER_DEBUG
 	if (ft->fi->debug)

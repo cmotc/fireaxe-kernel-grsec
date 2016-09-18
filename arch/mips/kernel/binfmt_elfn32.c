@@ -30,32 +30,11 @@ typedef elf_fpreg_t elf_fpregset_t[ELF_NFPREG];
 /*
  * This is used to ensure we don't load something for the wrong architecture.
  */
-#define elf_check_arch(hdr)						\
-({									\
-	int __res = 1;							\
-	struct elfhdr *__h = (hdr);					\
-									\
-	if (!mips_elf_check_machine(__h))				\
-		__res = 0;						\
-	if (__h->e_ident[EI_CLASS] != ELFCLASS32)			\
-		__res = 0;						\
-	if (((__h->e_flags & EF_MIPS_ABI2) == 0) ||			\
-	    ((__h->e_flags & EF_MIPS_ABI) != 0))			\
-		__res = 0;						\
-									\
-	__res;								\
-})
+#define elf_check_arch elfn32_check_arch
 
 #define TASK32_SIZE		0x7fff8000UL
 #undef ELF_ET_DYN_BASE
 #define ELF_ET_DYN_BASE		(TASK32_SIZE / 3 * 2)
-
-#ifdef CONFIG_PAX_ASLR
-#define PAX_ELF_ET_DYN_BASE	(TASK_IS_32BIT_ADDR ? 0x00400000UL : 0x00400000UL)
-
-#define PAX_DELTA_MMAP_LEN	(TASK_IS_32BIT_ADDR ? 27-PAGE_SHIFT : 36-PAGE_SHIFT)
-#define PAX_DELTA_STACK_LEN	(TASK_IS_32BIT_ADDR ? 27-PAGE_SHIFT : 36-PAGE_SHIFT)
-#endif
 
 #include <asm/processor.h>
 #include <linux/module.h>

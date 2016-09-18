@@ -1203,8 +1203,10 @@ static int team_port_add(struct team *team, struct net_device *port_dev)
 		goto err_dev_open;
 	}
 
+	netif_addr_lock_bh(dev);
 	dev_uc_sync_multiple(port_dev, dev);
 	dev_mc_sync_multiple(port_dev, dev);
+	netif_addr_unlock_bh(dev);
 
 	err = vlan_vids_add_by_dev(port_dev, dev);
 	if (err) {
@@ -2148,7 +2150,7 @@ static unsigned int team_get_num_rx_queues(void)
 	return TEAM_DEFAULT_NUM_RX_QUEUES;
 }
 
-static struct rtnl_link_ops team_link_ops = {
+static struct rtnl_link_ops team_link_ops __read_mostly = {
 	.kind			= DRV_NAME,
 	.priv_size		= sizeof(struct team),
 	.setup			= team_setup,
@@ -2943,7 +2945,7 @@ static int team_device_event(struct notifier_block *unused,
 	return NOTIFY_DONE;
 }
 
-static struct notifier_block team_notifier_block = {
+static struct notifier_block team_notifier_block __read_mostly = {
 	.notifier_call = team_device_event,
 };
 

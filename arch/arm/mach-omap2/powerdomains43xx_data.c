@@ -10,7 +10,6 @@
 
 #include <linux/kernel.h>
 #include <linux/init.h>
-#include <asm/pgtable.h>
 
 #include "powerdomain.h"
 
@@ -130,9 +129,7 @@ static int am43xx_check_vcvp(void)
 
 void __init am43xx_powerdomains_init(void)
 {
-	pax_open_kernel();
-	const_cast(omap4_pwrdm_operations.pwrdm_has_voltdm) = am43xx_check_vcvp;
-	pax_close_kernel();
+	omap4_pwrdm_operations.pwrdm_has_voltdm = am43xx_check_vcvp;
 	pwrdm_register_platform_funcs(&omap4_pwrdm_operations);
 	pwrdm_register_pwrdms(powerdomains_am43xx);
 	pwrdm_complete_init();

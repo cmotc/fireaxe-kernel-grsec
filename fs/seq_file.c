@@ -14,8 +14,6 @@
 #include <linux/mm.h>
 #include <linux/printk.h>
 #include <linux/string_helpers.h>
-#include <linux/sched.h>
-#include <linux/grsecurity.h>
 
 #include <asm/uaccess.h>
 #include <asm/page.h>
@@ -28,7 +26,7 @@ static void seq_set_overflow(struct seq_file *m)
 static void *seq_buf_alloc(unsigned long size)
 {
 	void *buf;
-	gfp_t gfp = GFP_KERNEL | GFP_USERCOPY;
+	gfp_t gfp = GFP_KERNEL;
 
 	/*
 	 * For high order allocations, use __GFP_NORETRY to avoid oom-killing -
@@ -40,7 +38,7 @@ static void *seq_buf_alloc(unsigned long size)
 		gfp |= __GFP_NORETRY | __GFP_NOWARN;
 	buf = kmalloc(size, gfp);
 	if (!buf && size > PAGE_SIZE)
-		buf = vmalloc_usercopy(size);
+		buf = vmalloc(size);
 	return buf;
 }
 
@@ -79,10 +77,6 @@ int seq_open(struct file *file, const struct seq_operations *op)
 	// to the lifetime of the file.
 	p->file = file;
 
-#ifdef CONFIG_GRKERNSEC_PROC_MEMMAP
-	p->exec_id = current->exec_id;
-#endif
-
 	/*
 	 * Wrappers around seq_open(e.g. swaps_open) need to be
 	 * aware of this. If they set f_version themselves, they
@@ -103,16 +97,6 @@ int seq_open(struct file *file, const struct seq_operations *op)
 	return 0;
 }
 EXPORT_SYMBOL(seq_open);
-
-
-int seq_open_restrict(struct file *file, const struct seq_operations *op)
-{
-	if (gr_proc_is_restricted())
-		return -EACCES;
-
-	return seq_open(file, op);
-}
-EXPORT_SYMBOL(seq_open_restrict);
 
 static int traverse(struct seq_file *m, loff_t offset)
 {
@@ -185,7 +169,7 @@ Eoverflow:
 ssize_t seq_read(struct file *file, char __user *buf, size_t size, loff_t *ppos)
 {
 	struct seq_file *m = file->private_data;
-	ssize_t copied = 0;
+	size_t copied = 0;
 	loff_t pos;
 	size_t n;
 	void *p;
@@ -580,7 +564,7 @@ static void single_stop(struct seq_file *p, void *v)
 int single_open(struct file *file, int (*show)(struct seq_file *, void *),
 		void *data)
 {
-	seq_operations_no_const *op = kzalloc(sizeof(*op), GFP_KERNEL);
+	struct seq_operations *op = kmalloc(sizeof(*op), GFP_KERNEL);
 	int res = -ENOMEM;
 
 	if (op) {
@@ -615,17 +599,6 @@ int single_open_size(struct file *file, int (*show)(struct seq_file *, void *),
 	return 0;
 }
 EXPORT_SYMBOL(single_open_size);
-
-int single_open_restrict(struct file *file, int (*show)(struct seq_file *, void *),
-		void *data)
-{
-	if (gr_proc_is_restricted())
-		return -EACCES;
-
-	return single_open(file, show, data);
-}
-EXPORT_SYMBOL(single_open_restrict);
-
 
 int single_release(struct inode *inode, struct file *file)
 {

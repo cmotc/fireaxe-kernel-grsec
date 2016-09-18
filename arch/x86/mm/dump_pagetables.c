@@ -27,7 +27,6 @@
 struct pg_state {
 	int level;
 	pgprot_t current_prot;
-	pgprot_t current_prots[5];
 	unsigned long start_address;
 	unsigned long current_address;
 	const struct addr_marker *marker;
@@ -185,23 +184,6 @@ static unsigned long normalize_addr(unsigned long u)
 #endif
 }
 
-static pgprot_t merge_prot(pgprot_t old_prot, pgprot_t new_prot)
-{
-	if (!(pgprot_val(new_prot) & _PAGE_PRESENT))
-		return new_prot;
-
-	if (!(pgprot_val(old_prot) & _PAGE_PRESENT))
-		return new_prot;
-
-	if (pgprot_val(old_prot) & _PAGE_NX)
-		pgprot_val(new_prot) |= _PAGE_NX;
-
-	if (!(pgprot_val(old_prot) & _PAGE_RW))
-		pgprot_val(new_prot) &= ~_PAGE_RW;
-
-	return new_prot;
-}
-
 /*
  * This function gets called on a break in a continuous series
  * of PTE entries; the next one is different so we need to
@@ -218,13 +200,11 @@ static void note_page(struct seq_file *m, struct pg_state *st,
 	 * we have now. "break" is either changing perms, levels or
 	 * address space marker.
 	 */
-	new_prot = merge_prot(st->current_prots[level - 1], new_prot);
 	prot = pgprot_val(new_prot);
 	cur = pgprot_val(st->current_prot);
 
 	if (!st->level) {
 		/* First entry */
-		st->current_prots[0] = __pgprot(_PAGE_RW);
 		st->current_prot = new_prot;
 		st->level = level;
 		st->marker = address_markers;
@@ -236,8 +216,9 @@ static void note_page(struct seq_file *m, struct pg_state *st,
 		const char *unit = units;
 		unsigned long delta;
 		int width = sizeof(unsigned long) * 2;
+		pgprotval_t pr = pgprot_val(st->current_prot);
 
-		if (st->check_wx && (cur & _PAGE_RW) && !(cur & _PAGE_NX)) {
+		if (st->check_wx && (pr & _PAGE_RW) && !(pr & _PAGE_NX)) {
 			WARN_ONCE(1,
 				  "x86/mm: Found insecure W+X mapping at address %p/%pS\n",
 				  (void *)st->start_address,
@@ -323,10 +304,9 @@ static void walk_pmd_level(struct seq_file *m, struct pg_state *st, pud_t addr,
 	start = (pmd_t *) pud_page_vaddr(addr);
 	for (i = 0; i < PTRS_PER_PMD; i++) {
 		st->current_address = normalize_addr(P + i * PMD_LEVEL_MULT);
-		prot = pmd_flags(*start);
-		st->current_prots[3] = merge_prot(st->current_prots[2], __pgprot(prot));
 		if (!pmd_none(*start)) {
 			if (pmd_large(*start) || !pmd_present(*start)) {
+				prot = pmd_flags(*start);
 				note_page(m, st, __pgprot(prot), 3);
 			} else {
 				walk_pte_level(m, st, *start,
@@ -357,10 +337,9 @@ static void walk_pud_level(struct seq_file *m, struct pg_state *st, pgd_t addr,
 
 	for (i = 0; i < PTRS_PER_PUD; i++) {
 		st->current_address = normalize_addr(P + i * PUD_LEVEL_MULT);
-		prot = pud_flags(*start);
-		st->current_prots[2] = merge_prot(st->current_prots[1], __pgprot(start->pud));
 		if (!pud_none(*start)) {
 			if (pud_large(*start) || !pud_present(*start)) {
+				prot = pud_flags(*start);
 				note_page(m, st, __pgprot(prot), 2);
 			} else {
 				walk_pmd_level(m, st, *start,
@@ -416,10 +395,9 @@ static void ptdump_walk_pgd_level_core(struct seq_file *m, pgd_t *pgd,
 
 	for (i = 0; i < PTRS_PER_PGD; i++) {
 		st.current_address = normalize_addr(i * PGD_LEVEL_MULT);
-		prot = pgd_flags(*start);
-		st.current_prots[1] = __pgprot(prot);
 		if (!pgd_none(*start) && !is_hypervisor_range(i)) {
 			if (pgd_large(*start) || !pgd_present(*start)) {
+				prot = pgd_flags(*start);
 				note_page(m, &st, __pgprot(prot), 1);
 			} else {
 				walk_pud_level(m, &st, *start,

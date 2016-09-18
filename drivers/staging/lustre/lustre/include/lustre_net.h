@@ -1327,7 +1327,9 @@ struct ptlrpc_request {
 		/* allow the req to be sent if the import is in recovery
 		 * status
 		 */
-		rq_allow_replay:1;
+		rq_allow_replay:1,
+		/* bulk request, sent to server, but uncommitted */
+		rq_unstable:1;
 
 	unsigned int rq_nr_resend;
 
@@ -2571,7 +2573,7 @@ void *lustre_msg_buf_v2(struct lustre_msg_v2 *m, int n, int min_size);
 void *lustre_msg_buf(struct lustre_msg *m, int n, int minlen);
 int lustre_msg_buflen(struct lustre_msg *m, int n);
 int lustre_msg_bufcount(struct lustre_msg *m);
-void *lustre_msg_string(struct lustre_msg *m, int n, int max_len);
+char *lustre_msg_string(struct lustre_msg *m, int n, int max_len);
 __u32 lustre_msghdr_get_flags(struct lustre_msg *msg);
 void lustre_msghdr_set_flags(struct lustre_msg *msg, __u32 flags);
 __u32 lustre_msg_get_flags(struct lustre_msg *msg);

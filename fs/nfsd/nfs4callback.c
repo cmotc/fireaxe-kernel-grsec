@@ -470,7 +470,8 @@ static int decode_cb_sequence4res(struct xdr_stream *xdr,
 /*
  * NB: Without this zero space reservation, callbacks over krb5p fail
  */
-static void nfs4_xdr_enc_cb_null(void *req, struct xdr_stream *xdr, void *__unused)
+static void nfs4_xdr_enc_cb_null(struct rpc_rqst *req, struct xdr_stream *xdr,
+				 void *__unused)
 {
 	xdr_reserve_space(xdr, 0);
 }
@@ -478,9 +479,9 @@ static void nfs4_xdr_enc_cb_null(void *req, struct xdr_stream *xdr, void *__unus
 /*
  * 20.2. Operation 4: CB_RECALL - Recall a Delegation
  */
-static void nfs4_xdr_enc_cb_recall(void *req, struct xdr_stream *xdr, void *_cb)
+static void nfs4_xdr_enc_cb_recall(struct rpc_rqst *req, struct xdr_stream *xdr,
+				   const struct nfsd4_callback *cb)
 {
-	const struct nfsd4_callback *cb = _cb;
 	const struct nfs4_delegation *dp = cb_to_delegation(cb);
 	struct nfs4_cb_compound_hdr hdr = {
 		.ident = cb->cb_clp->cl_cb_ident,
@@ -503,7 +504,8 @@ static void nfs4_xdr_enc_cb_recall(void *req, struct xdr_stream *xdr, void *_cb)
  * Protocol".
  */
 
-static int nfs4_xdr_dec_cb_null(void *req, struct xdr_stream *xdr, void *__unused)
+static int nfs4_xdr_dec_cb_null(struct rpc_rqst *req, struct xdr_stream *xdr,
+				void *__unused)
 {
 	return 0;
 }
@@ -511,11 +513,10 @@ static int nfs4_xdr_dec_cb_null(void *req, struct xdr_stream *xdr, void *__unuse
 /*
  * 20.2. Operation 4: CB_RECALL - Recall a Delegation
  */
-static int nfs4_xdr_dec_cb_recall(void *rqstp,
+static int nfs4_xdr_dec_cb_recall(struct rpc_rqst *rqstp,
 				  struct xdr_stream *xdr,
-				  void *_cb)
+				  struct nfsd4_callback *cb)
 {
-	struct nfsd4_callback *cb = _cb;
 	struct nfs4_cb_compound_hdr hdr;
 	int status;
 
@@ -585,12 +586,10 @@ static void encode_cb_layout4args(struct xdr_stream *xdr,
 	hdr->nops++;
 }
 
-static void nfs4_xdr_enc_cb_layout(void *_req,
+static void nfs4_xdr_enc_cb_layout(struct rpc_rqst *req,
 				   struct xdr_stream *xdr,
-				   void *_cb)
+				   const struct nfsd4_callback *cb)
 {
-	struct rpc_rqst *req = _req;
-	const struct nfsd4_callback *cb = _cb;
 	const struct nfs4_layout_stateid *ls =
 		container_of(cb, struct nfs4_layout_stateid, ls_recall);
 	struct nfs4_cb_compound_hdr hdr = {
@@ -604,12 +603,10 @@ static void nfs4_xdr_enc_cb_layout(void *_req,
 	encode_cb_nops(&hdr);
 }
 
-static int nfs4_xdr_dec_cb_layout(void *_rqstp,
+static int nfs4_xdr_dec_cb_layout(struct rpc_rqst *rqstp,
 				  struct xdr_stream *xdr,
-				  void *_cb)
+				  struct nfsd4_callback *cb)
 {
-	struct rpc_rqst *rqstp = _rqstp;
-	struct nfsd4_callback *cb = _cb;
 	struct nfs4_cb_compound_hdr hdr;
 	int status;
 
@@ -632,8 +629,8 @@ static int nfs4_xdr_dec_cb_layout(void *_rqstp,
 #define PROC(proc, call, argtype, restype)				\
 [NFSPROC4_CLNT_##proc] = {						\
 	.p_proc    = NFSPROC4_CB_##call,				\
-	.p_encode  = nfs4_xdr_enc_##argtype,			\
-	.p_decode  = nfs4_xdr_dec_##restype,			\
+	.p_encode  = (kxdreproc_t)nfs4_xdr_enc_##argtype,		\
+	.p_decode  = (kxdrdproc_t)nfs4_xdr_dec_##restype,		\
 	.p_arglen  = NFS4_enc_##argtype##_sz,				\
 	.p_replen  = NFS4_dec_##restype##_sz,				\
 	.p_statidx = NFSPROC4_CB_##call,				\
@@ -713,22 +710,6 @@ static struct rpc_cred *get_backchannel_cred(struct nfs4_client *clp, struct rpc
 	}
 }
 
-static struct rpc_clnt *create_backchannel_client(struct rpc_create_args *args)
-{
-	struct rpc_xprt *xprt;
-
-	if (args->protocol != XPRT_TRANSPORT_BC_TCP)
-		return rpc_create(args);
-
-	xprt = args->bc_xprt->xpt_bc_xprt;
-	if (xprt) {
-		xprt_get(xprt);
-		return rpc_create_xprt(args, xprt);
-	}
-
-	return rpc_create(args);
-}
-
 static int setup_callback_client(struct nfs4_client *clp, struct nfs4_cb_conn *conn, struct nfsd4_session *ses)
 {
 	int maxtime = max_cb_time(clp->net);
@@ -771,7 +752,7 @@ static int setup_callback_client(struct nfs4_client *clp, struct nfs4_cb_conn *c
 		args.authflavor = ses->se_cb_sec.flavor;
 	}
 	/* Create RPC client */
-	client = create_backchannel_client(&args);
+	client = rpc_create(&args);
 	if (IS_ERR(client)) {
 		dprintk("NFSD: couldn't create callback client: %ld\n",
 			PTR_ERR(client));

@@ -60,10 +60,16 @@ struct io_pgtable_cfg {
 	 * IO_PGTABLE_QUIRK_TLBI_ON_MAP: If the format forbids caching invalid
 	 *	(unmapped) entries but the hardware might do so anyway, perform
 	 *	TLB maintenance when mapping as well as when unmapping.
+	 *
+	 * IO_PGTABLE_QUIRK_ARM_MTK_4GB: (ARM v7s format) Set bit 9 in all
+	 *	PTEs, for Mediatek IOMMUs which treat it as a 33rd address bit
+	 *	when the SoC is in "4GB mode" and they can only access the high
+	 *	remap of DRAM (0x1_00000000 to 0x1_ffffffff).
 	 */
 	#define IO_PGTABLE_QUIRK_ARM_NS		BIT(0)
 	#define IO_PGTABLE_QUIRK_NO_PERMS	BIT(1)
 	#define IO_PGTABLE_QUIRK_TLBI_ON_MAP	BIT(2)
+	#define IO_PGTABLE_QUIRK_ARM_MTK_4GB	BIT(3)
 	unsigned long			quirks;
 	unsigned long			pgsize_bitmap;
 	unsigned int			ias;
@@ -103,18 +109,17 @@ struct io_pgtable_cfg {
  * These functions map directly onto the iommu_ops member functions with
  * the same names.
  */
-struct io_pgtable;
 struct io_pgtable_ops {
-	int (*map)(struct io_pgtable *iop, unsigned long iova,
+	int (*map)(struct io_pgtable_ops *ops, unsigned long iova,
 		   phys_addr_t paddr, size_t size, int prot);
-	int (*unmap)(struct io_pgtable *iop, unsigned long iova,
+	int (*unmap)(struct io_pgtable_ops *ops, unsigned long iova,
 		     size_t size);
-	phys_addr_t (*iova_to_phys)(struct io_pgtable *iop,
+	phys_addr_t (*iova_to_phys)(struct io_pgtable_ops *ops,
 				    unsigned long iova);
 };
 
 /**
- * alloc_io_pgtable() - Allocate a page table allocator for use by an IOMMU.
+ * alloc_io_pgtable_ops() - Allocate a page table allocator for use by an IOMMU.
  *
  * @fmt:    The page table format.
  * @cfg:    The page table configuration. This will be modified to represent
@@ -123,9 +128,9 @@ struct io_pgtable_ops {
  * @cookie: An opaque token provided by the IOMMU driver and passed back to
  *          the callback routines in cfg->tlb.
  */
-struct io_pgtable *alloc_io_pgtable(enum io_pgtable_fmt fmt,
-				    struct io_pgtable_cfg *cfg,
-				    void *cookie);
+struct io_pgtable_ops *alloc_io_pgtable_ops(enum io_pgtable_fmt fmt,
+					    struct io_pgtable_cfg *cfg,
+					    void *cookie);
 
 /**
  * free_io_pgtable_ops() - Free an io_pgtable_ops structure. The caller
@@ -134,7 +139,7 @@ struct io_pgtable *alloc_io_pgtable(enum io_pgtable_fmt fmt,
  *
  * @ops: The ops returned from alloc_io_pgtable_ops.
  */
-void free_io_pgtable(struct io_pgtable *iop);
+void free_io_pgtable_ops(struct io_pgtable_ops *ops);
 
 
 /*
@@ -156,8 +161,10 @@ struct io_pgtable {
 	void			*cookie;
 	bool			tlb_sync_pending;
 	struct io_pgtable_cfg	cfg;
-	const struct io_pgtable_ops	*ops;
+	struct io_pgtable_ops	ops;
 };
+
+#define io_pgtable_ops_to_pgtable(x) container_of((x), struct io_pgtable, ops)
 
 static inline void io_pgtable_tlb_flush_all(struct io_pgtable *iop)
 {

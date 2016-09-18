@@ -162,7 +162,7 @@ static void sctp_v6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
 	skb->network_header   = saveip;
 	skb->transport_header = savesctp;
 	if (!sk) {
-		ICMP6_INC_STATS_BH(net, idev, ICMP6_MIB_INERRORS);
+		__ICMP6_INC_STATS(net, idev, ICMP6_MIB_INERRORS);
 		goto out;
 	}
 
@@ -989,7 +989,7 @@ static const struct inet6_protocol sctpv6_protocol = {
 	.flags        = INET6_PROTO_NOPOLICY | INET6_PROTO_FINAL,
 };
 
-static struct sctp_af sctp_af_inet6 __read_only = {
+static struct sctp_af sctp_af_inet6 = {
 	.sa_family	   = AF_INET6,
 	.sctp_xmit	   = sctp_v6_xmit,
 	.setsockopt	   = ipv6_setsockopt,
@@ -1046,7 +1046,7 @@ void sctp_v6_pf_init(void)
 
 void sctp_v6_pf_exit(void)
 {
-	pax_list_del(&sctp_af_inet6.list);
+	list_del(&sctp_af_inet6.list);
 }
 
 /* Initialize IPv6 support and register with socket layer.  */

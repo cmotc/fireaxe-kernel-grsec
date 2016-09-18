@@ -20,9 +20,8 @@
 #include <linux/xattr.h>
 #include <linux/export.h>
 #include <linux/user_namespace.h>
-#include <linux/grsecurity.h>
 
-struct posix_acl **acl_by_type(struct inode *inode, int type)
+static struct posix_acl **acl_by_type(struct inode *inode, int type)
 {
 	switch (type) {
 	case ACL_TYPE_ACCESS:
@@ -33,19 +32,22 @@ struct posix_acl **acl_by_type(struct inode *inode, int type)
 		BUG();
 	}
 }
-EXPORT_SYMBOL(acl_by_type);
 
 struct posix_acl *get_cached_acl(struct inode *inode, int type)
 {
 	struct posix_acl **p = acl_by_type(inode, type);
-	struct posix_acl *acl = ACCESS_ONCE(*p);
-	if (acl) {
-		spin_lock(&inode->i_lock);
-		acl = *p;
-		if (acl != ACL_NOT_CACHED)
-			acl = posix_acl_dup(acl);
-		spin_unlock(&inode->i_lock);
+	struct posix_acl *acl;
+
+	for (;;) {
+		rcu_read_lock();
+		acl = rcu_dereference(*p);
+		if (!acl || is_uncached_acl(acl) ||
+		    atomic_inc_not_zero(&acl->a_refcount))
+			break;
+		rcu_read_unlock();
+		cpu_relax();
 	}
+	rcu_read_unlock();
 	return acl;
 }
 EXPORT_SYMBOL(get_cached_acl);
@@ -60,58 +62,72 @@ void set_cached_acl(struct inode *inode, int type, struct posix_acl *acl)
 {
 	struct posix_acl **p = acl_by_type(inode, type);
 	struct posix_acl *old;
-	spin_lock(&inode->i_lock);
-	old = *p;
-	rcu_assign_pointer(*p, posix_acl_dup(acl));
-	spin_unlock(&inode->i_lock);
-	if (old != ACL_NOT_CACHED)
+
+	old = xchg(p, posix_acl_dup(acl));
+	if (!is_uncached_acl(old))
 		posix_acl_release(old);
 }
 EXPORT_SYMBOL(set_cached_acl);
 
+static void __forget_cached_acl(struct posix_acl **p)
+{
+	struct posix_acl *old;
+
+	old = xchg(p, ACL_NOT_CACHED);
+	if (!is_uncached_acl(old))
+		posix_acl_release(old);
+}
+
 void forget_cached_acl(struct inode *inode, int type)
 {
-	struct posix_acl **p = acl_by_type(inode, type);
-	struct posix_acl *old;
-	spin_lock(&inode->i_lock);
-	old = *p;
-	*p = ACL_NOT_CACHED;
-	spin_unlock(&inode->i_lock);
-	if (old != ACL_NOT_CACHED)
-		posix_acl_release(old);
+	__forget_cached_acl(acl_by_type(inode, type));
 }
 EXPORT_SYMBOL(forget_cached_acl);
 
 void forget_all_cached_acls(struct inode *inode)
 {
-	struct posix_acl *old_access, *old_default;
-	spin_lock(&inode->i_lock);
-	old_access = inode->i_acl;
-	old_default = inode->i_default_acl;
-	inode->i_acl = inode->i_default_acl = ACL_NOT_CACHED;
-	spin_unlock(&inode->i_lock);
-	if (old_access != ACL_NOT_CACHED)
-		posix_acl_release(old_access);
-	if (old_default != ACL_NOT_CACHED)
-		posix_acl_release(old_default);
+	__forget_cached_acl(&inode->i_acl);
+	__forget_cached_acl(&inode->i_default_acl);
 }
 EXPORT_SYMBOL(forget_all_cached_acls);
 
 struct posix_acl *get_acl(struct inode *inode, int type)
 {
+	void *sentinel;
+	struct posix_acl **p;
 	struct posix_acl *acl;
 
+	/*
+	 * The sentinel is used to detect when another operation like
+	 * set_cached_acl() or forget_cached_acl() races with get_acl().
+	 * It is guaranteed that is_uncached_acl(sentinel) is true.
+	 */
+
 	acl = get_cached_acl(inode, type);
-	if (acl != ACL_NOT_CACHED)
+	if (!is_uncached_acl(acl))
 		return acl;
 
 	if (!IS_POSIXACL(inode))
 		return NULL;
 
+	sentinel = uncached_acl_sentinel(current);
+	p = acl_by_type(inode, type);
+
 	/*
-	 * A filesystem can force a ACL callback by just never filling the
-	 * ACL cache. But normally you'd fill the cache either at inode
-	 * instantiation time, or on the first ->get_acl call.
+	 * If the ACL isn't being read yet, set our sentinel.  Otherwise, the
+	 * current value of the ACL will not be ACL_NOT_CACHED and so our own
+	 * sentinel will not be set; another task will update the cache.  We
+	 * could wait for that other task to complete its job, but it's easier
+	 * to just call ->get_acl to fetch the ACL ourself.  (This is going to
+	 * be an unlikely race.)
+	 */
+	if (cmpxchg(p, ACL_NOT_CACHED, sentinel) != ACL_NOT_CACHED)
+		/* fall through */ ;
+
+	/*
+	 * Normally, the ACL returned by ->get_acl will be cached.
+	 * A filesystem can prevent that by calling
+	 * forget_cached_acl(inode, type) in ->get_acl.
 	 *
 	 * If the filesystem doesn't have a get_acl() function at all, we'll
 	 * just create the negative cache entry.
@@ -120,7 +136,24 @@ struct posix_acl *get_acl(struct inode *inode, int type)
 		set_cached_acl(inode, type, NULL);
 		return NULL;
 	}
-	return inode->i_op->get_acl(inode, type);
+	acl = inode->i_op->get_acl(inode, type);
+
+	if (IS_ERR(acl)) {
+		/*
+		 * Remove our sentinel so that we don't block future attempts
+		 * to cache the ACL.
+		 */
+		cmpxchg(p, sentinel, ACL_NOT_CACHED);
+		return acl;
+	}
+
+	/*
+	 * Cache the result, but only if our sentinel is still in place.
+	 */
+	posix_acl_dup(acl);
+	if (unlikely(cmpxchg(p, sentinel, acl) != sentinel))
+		posix_acl_release(acl);
+	return acl;
 }
 EXPORT_SYMBOL(get_acl);
 
@@ -278,7 +311,7 @@ posix_acl_equiv_mode(const struct posix_acl *acl, umode_t *mode_p)
 		}
 	}
         if (mode_p)
-                *mode_p = ((*mode_p & ~S_IRWXUGO) | mode) & ~gr_acl_umask();
+                *mode_p = (*mode_p & ~S_IRWXUGO) | mode;
         return not_equiv;
 }
 EXPORT_SYMBOL(posix_acl_equiv_mode);
@@ -428,7 +461,7 @@ static int posix_acl_create_masq(struct posix_acl *acl, umode_t *mode_p)
 		mode &= (group_obj->e_perm << 3) | ~S_IRWXG;
 	}
 
-	*mode_p = ((*mode_p & ~S_IRWXUGO) | mode) & ~gr_acl_umask();
+	*mode_p = (*mode_p & ~S_IRWXUGO) | mode;
         return not_equiv;
 }
 
@@ -486,8 +519,6 @@ __posix_acl_create(struct posix_acl **acl, gfp_t gfp, umode_t *mode_p)
 	struct posix_acl *clone = posix_acl_clone(*acl, gfp);
 	int err = -ENOMEM;
 	if (clone) {
-		*mode_p &= ~gr_acl_umask();
-
 		err = posix_acl_create_masq(clone, mode_p);
 		if (err < 0) {
 			posix_acl_release(clone);
@@ -660,12 +691,11 @@ struct posix_acl *
 posix_acl_from_xattr(struct user_namespace *user_ns,
 		     const void *value, size_t size)
 {
-	const posix_acl_xattr_header *header = (const posix_acl_xattr_header *)value;
-	const posix_acl_xattr_entry *entry = (const posix_acl_xattr_entry *)(header+1), *end;
+	posix_acl_xattr_header *header = (posix_acl_xattr_header *)value;
+	posix_acl_xattr_entry *entry = (posix_acl_xattr_entry *)(header+1), *end;
 	int count;
 	struct posix_acl *acl;
 	struct posix_acl_entry *acl_e;
-	umode_t umask = gr_acl_umask();
 
 	if (!value)
 		return NULL;
@@ -691,18 +721,12 @@ posix_acl_from_xattr(struct user_namespace *user_ns,
 
 		switch(acl_e->e_tag) {
 			case ACL_USER_OBJ:
-				acl_e->e_perm &= ~((umask & S_IRWXU) >> 6);
-				break;
 			case ACL_GROUP_OBJ:
 			case ACL_MASK:
-				acl_e->e_perm &= ~((umask & S_IRWXG) >> 3);
-				break;
 			case ACL_OTHER:
-				acl_e->e_perm &= ~(umask & S_IRWXO);
 				break;
 
 			case ACL_USER:
-				acl_e->e_perm &= ~((umask & S_IRWXU) >> 6);
 				acl_e->e_uid =
 					make_kuid(user_ns,
 						  le32_to_cpu(entry->e_id));
@@ -710,7 +734,6 @@ posix_acl_from_xattr(struct user_namespace *user_ns,
 					goto fail;
 				break;
 			case ACL_GROUP:
-				acl_e->e_perm &= ~((umask & S_IRWXG) >> 3);
 				acl_e->e_gid =
 					make_kgid(user_ns,
 						  le32_to_cpu(entry->e_id));
@@ -774,18 +797,18 @@ EXPORT_SYMBOL (posix_acl_to_xattr);
 
 static int
 posix_acl_xattr_get(const struct xattr_handler *handler,
-		    struct dentry *dentry, const char *name,
-		    void *value, size_t size)
+		    struct dentry *unused, struct inode *inode,
+		    const char *name, void *value, size_t size)
 {
 	struct posix_acl *acl;
 	int error;
 
-	if (!IS_POSIXACL(d_backing_inode(dentry)))
+	if (!IS_POSIXACL(inode))
 		return -EOPNOTSUPP;
-	if (d_is_symlink(dentry))
+	if (S_ISLNK(inode->i_mode))
 		return -EOPNOTSUPP;
 
-	acl = get_acl(d_backing_inode(dentry), handler->flags);
+	acl = get_acl(inode, handler->flags);
 	if (IS_ERR(acl))
 		return PTR_ERR(acl);
 	if (acl == NULL)
@@ -821,16 +844,12 @@ EXPORT_SYMBOL(set_posix_acl);
 
 static int
 posix_acl_xattr_set(const struct xattr_handler *handler,
-		    struct dentry *dentry,
+		    struct dentry *unused, struct inode *inode,
 		    const char *name, const void *value,
 		    size_t size, int flags)
 {
-	struct inode *inode = d_backing_inode(dentry);
 	struct posix_acl *acl = NULL;
 	int ret;
-
-	if (strcmp(name, "") != 0)
-		return -EINVAL;
 
 	if (value) {
 		acl = posix_acl_from_xattr(&init_user_ns, value, size);

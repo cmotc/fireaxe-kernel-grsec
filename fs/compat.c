@@ -54,7 +54,7 @@
 #include <asm/ioctls.h>
 #include "internal.h"
 
-int compat_log = 0;
+int compat_log = 1;
 
 int compat_printk(const char *fmt, ...)
 {
@@ -512,7 +512,7 @@ COMPAT_SYSCALL_DEFINE2(io_setup, unsigned, nr_reqs, u32 __user *, ctx32p)
 
 	set_fs(KERNEL_DS);
 	/* The __user pointer cast is valid because of the set_fs() */
-	ret = sys_io_setup(nr_reqs, (aio_context_t __force_user *) &ctx64);
+	ret = sys_io_setup(nr_reqs, (aio_context_t __user *) &ctx64);
 	set_fs(oldfs);
 	/* truncating is ok because it's a user address */
 	if (!ret)
@@ -562,7 +562,7 @@ ssize_t compat_rw_copy_check_uvector(int type,
 		goto out;
 
 	ret = -EINVAL;
-	if (nr_segs > UIO_MAXIOV)
+	if (nr_segs > UIO_MAXIOV || nr_segs < 0)
 		goto out;
 	if (nr_segs > fast_segs) {
 		ret = -ENOMEM;
@@ -843,7 +843,6 @@ struct compat_old_linux_dirent {
 struct compat_readdir_callback {
 	struct dir_context ctx;
 	struct compat_old_linux_dirent __user *dirent;
-	struct file * file;
 	int result;
 };
 
@@ -863,10 +862,6 @@ static int compat_fillonedir(struct dir_context *ctx, const char *name,
 		buf->result = -EOVERFLOW;
 		return -EOVERFLOW;
 	}
-
-	if (!gr_acl_handle_filldir(buf->file, name, namlen, ino))
-		return 0;
-
 	buf->result++;
 	dirent = buf->dirent;
 	if (!access_ok(VERIFY_WRITE, dirent,
@@ -889,7 +884,7 @@ COMPAT_SYSCALL_DEFINE3(old_readdir, unsigned int, fd,
 		struct compat_old_linux_dirent __user *, dirent, unsigned int, count)
 {
 	int error;
-	struct fd f = fdget(fd);
+	struct fd f = fdget_pos(fd);
 	struct compat_readdir_callback buf = {
 		.ctx.actor = compat_fillonedir,
 		.dirent = dirent
@@ -898,12 +893,11 @@ COMPAT_SYSCALL_DEFINE3(old_readdir, unsigned int, fd,
 	if (!f.file)
 		return -EBADF;
 
-	buf.file = f.file;
 	error = iterate_dir(f.file, &buf.ctx);
 	if (buf.result)
 		error = buf.result;
 
-	fdput(f);
+	fdput_pos(f);
 	return error;
 }
 
@@ -918,7 +912,6 @@ struct compat_getdents_callback {
 	struct dir_context ctx;
 	struct compat_linux_dirent __user *current_dir;
 	struct compat_linux_dirent __user *previous;
-	struct file * file;
 	int count;
 	int error;
 };
@@ -941,12 +934,10 @@ static int compat_filldir(struct dir_context *ctx, const char *name, int namlen,
 		buf->error = -EOVERFLOW;
 		return -EOVERFLOW;
 	}
-
-	if (!gr_acl_handle_filldir(buf->file, name, namlen, ino))
-		return 0;
-
 	dirent = buf->previous;
 	if (dirent) {
+		if (signal_pending(current))
+			return -EINTR;
 		if (__put_user(offset, &dirent->d_off))
 			goto efault;
 	}
@@ -986,11 +977,10 @@ COMPAT_SYSCALL_DEFINE3(getdents, unsigned int, fd,
 	if (!access_ok(VERIFY_WRITE, dirent, count))
 		return -EFAULT;
 
-	f = fdget(fd);
+	f = fdget_pos(fd);
 	if (!f.file)
 		return -EBADF;
 
-	buf.file = f.file;
 	error = iterate_dir(f.file, &buf.ctx);
 	if (error >= 0)
 		error = buf.error;
@@ -1001,7 +991,7 @@ COMPAT_SYSCALL_DEFINE3(getdents, unsigned int, fd,
 		else
 			error = count - buf.count;
 	}
-	fdput(f);
+	fdput_pos(f);
 	return error;
 }
 
@@ -1011,7 +1001,6 @@ struct compat_getdents_callback64 {
 	struct dir_context ctx;
 	struct linux_dirent64 __user *current_dir;
 	struct linux_dirent64 __user *previous;
-	struct file * file;
 	int count;
 	int error;
 };
@@ -1030,13 +1019,11 @@ static int compat_filldir64(struct dir_context *ctx, const char *name,
 	buf->error = -EINVAL;	/* only used if we fail.. */
 	if (reclen > buf->count)
 		return -EINVAL;
-
-	if (!gr_acl_handle_filldir(buf->file, name, namlen, ino))
-		return 0;
-
 	dirent = buf->previous;
 
 	if (dirent) {
+		if (signal_pending(current))
+			return -EINTR;
 		if (__put_user_unaligned(offset, &dirent->d_off))
 			goto efault;
 	}
@@ -1079,22 +1066,22 @@ COMPAT_SYSCALL_DEFINE3(getdents64, unsigned int, fd,
 	if (!access_ok(VERIFY_WRITE, dirent, count))
 		return -EFAULT;
 
-	f = fdget(fd);
+	f = fdget_pos(fd);
 	if (!f.file)
 		return -EBADF;
 
-	buf.file = f.file;
 	error = iterate_dir(f.file, &buf.ctx);
 	if (error >= 0)
 		error = buf.error;
 	lastdirent = buf.previous;
 	if (lastdirent) {
-		if (__put_user_unaligned(buf.ctx.pos, &lastdirent->d_off))
+		typeof(lastdirent->d_off) d_off = buf.ctx.pos;
+		if (__put_user_unaligned(d_off, &lastdirent->d_off))
 			error = -EFAULT;
 		else
 			error = count - buf.count;
 	}
-	fdput(f);
+	fdput_pos(f);
 	return error;
 }
 #endif /* __ARCH_WANT_COMPAT_SYS_GETDENTS64 */
@@ -1344,7 +1331,7 @@ COMPAT_SYSCALL_DEFINE5(select, int, n, compat_ulong_t __user *, inp,
 }
 
 struct compat_sel_arg_struct {
-	compat_long_t n;
+	compat_ulong_t n;
 	compat_uptr_t inp;
 	compat_uptr_t outp;
 	compat_uptr_t exp;

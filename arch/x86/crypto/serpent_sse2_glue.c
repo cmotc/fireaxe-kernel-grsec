@@ -45,10 +45,8 @@
 #include <asm/crypto/serpent-sse2.h>
 #include <asm/crypto/glue_helper.h>
 
-static void serpent_decrypt_cbc_xway(void *ctx, u8 *_dst, const u8 *_src)
+static void serpent_decrypt_cbc_xway(void *ctx, u128 *dst, const u128 *src)
 {
-	u128 *dst = (u128 *)_dst;
-	const u128 *src = (const u128 *)_src;
 	u128 ivs[SERPENT_PARALLEL_BLOCKS - 1];
 	unsigned int j;
 
@@ -602,7 +600,7 @@ static struct crypto_alg serpent_algs[10] = { {
 
 static int __init serpent_sse2_init(void)
 {
-	if (!cpu_has_xmm2) {
+	if (!boot_cpu_has(X86_FEATURE_XMM2)) {
 		printk(KERN_INFO "SSE2 instructions are not detected.\n");
 		return -ENODEV;
 	}

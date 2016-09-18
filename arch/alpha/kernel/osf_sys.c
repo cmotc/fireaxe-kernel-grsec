@@ -147,7 +147,7 @@ SYSCALL_DEFINE4(osf_getdirentries, unsigned int, fd,
 		long __user *, basep)
 {
 	int error;
-	struct fd arg = fdget(fd);
+	struct fd arg = fdget_pos(fd);
 	struct osf_dirent_callback buf = {
 		.ctx.actor = osf_filldir,
 		.dirent = dirent,
@@ -164,7 +164,7 @@ SYSCALL_DEFINE4(osf_getdirentries, unsigned int, fd,
 	if (count != buf.count)
 		error = count - buf.count;
 
-	fdput(arg);
+	fdput_pos(arg);
 	return error;
 }
 
@@ -1300,11 +1300,10 @@ SYSCALL_DEFINE1(old_adjtimex, struct timex32 __user *, txc_p)
    generic version except that we know how to honor ADDR_LIMIT_32BIT.  */
 
 static unsigned long
-arch_get_unmapped_area_1(struct file *filp, unsigned long addr, unsigned long len,
-		         unsigned long limit, unsigned long flags)
+arch_get_unmapped_area_1(unsigned long addr, unsigned long len,
+		         unsigned long limit)
 {
 	struct vm_unmapped_area_info info;
-	unsigned long offset = gr_rand_threadstack_offset(current->mm, filp, flags);
 
 	info.flags = 0;
 	info.length = len;
@@ -1312,7 +1311,6 @@ arch_get_unmapped_area_1(struct file *filp, unsigned long addr, unsigned long le
 	info.high_limit = limit;
 	info.align_mask = 0;
 	info.align_offset = 0;
-	info.threadstack_offset = offset;
 	return vm_unmapped_area(&info);
 }
 
@@ -1345,24 +1343,20 @@ arch_get_unmapped_area(struct file *filp, unsigned long addr,
 	   merely specific addresses, but regions of memory -- perhaps
 	   this feature should be incorporated into all ports?  */
 
-#ifdef CONFIG_PAX_RANDMMAP
-	if (!(current->mm->pax_flags & MF_PAX_RANDMMAP))
-#endif
-
 	if (addr) {
-		addr = arch_get_unmapped_area_1 (filp, PAGE_ALIGN(addr), len, limit, flags);
+		addr = arch_get_unmapped_area_1 (PAGE_ALIGN(addr), len, limit);
 		if (addr != (unsigned long) -ENOMEM)
 			return addr;
 	}
 
 	/* Next, try allocating at TASK_UNMAPPED_BASE.  */
-	addr = arch_get_unmapped_area_1 (filp, PAGE_ALIGN(current->mm->mmap_base), len, limit, flags);
-
+	addr = arch_get_unmapped_area_1 (PAGE_ALIGN(TASK_UNMAPPED_BASE),
+					 len, limit);
 	if (addr != (unsigned long) -ENOMEM)
 		return addr;
 
 	/* Finally, try allocating in low memory.  */
-	addr = arch_get_unmapped_area_1 (filp, PAGE_SIZE, len, limit, flags);
+	addr = arch_get_unmapped_area_1 (PAGE_SIZE, len, limit);
 
 	return addr;
 }

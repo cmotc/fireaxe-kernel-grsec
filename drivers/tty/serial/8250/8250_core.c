@@ -488,9 +488,9 @@ static void univ8250_release_port(struct uart_port *port)
 
 static void univ8250_rsa_support(struct uart_ops *ops)
 {
-	const_cast(ops->config_port)  = univ8250_config_port;
-	const_cast(ops->request_port) = univ8250_request_port;
-	const_cast(ops->release_port) = univ8250_release_port;
+	ops->config_port  = univ8250_config_port;
+	ops->request_port = univ8250_request_port;
+	ops->release_port = univ8250_release_port;
 }
 
 #else
@@ -533,10 +533,8 @@ static void __init serial8250_isa_init_ports(void)
 	}
 
 	/* chain base port ops to support Remote Supervisor Adapter */
-	pax_open_kernel();
-	memcpy((void *)&univ8250_port_ops, base_ops, sizeof univ8250_port_ops);
+	univ8250_port_ops = *base_ops;
 	univ8250_rsa_support(&univ8250_port_ops);
-	pax_close_kernel();
 
 	if (share_irqs)
 		irqflag = IRQF_SHARED;
@@ -832,6 +830,7 @@ static int serial8250_probe(struct platform_device *dev)
 		uart.port.handle_irq	= p->handle_irq;
 		uart.port.handle_break	= p->handle_break;
 		uart.port.set_termios	= p->set_termios;
+		uart.port.get_mctrl	= p->get_mctrl;
 		uart.port.pm		= p->pm;
 		uart.port.dev		= &dev->dev;
 		uart.port.irqflags	|= irqflag;
@@ -1024,6 +1023,8 @@ int serial8250_register_8250_port(struct uart_8250_port *up)
 		/*  Possibly override set_termios call */
 		if (up->port.set_termios)
 			uart->port.set_termios = up->port.set_termios;
+		if (up->port.get_mctrl)
+			uart->port.get_mctrl = up->port.get_mctrl;
 		if (up->port.set_mctrl)
 			uart->port.set_mctrl = up->port.set_mctrl;
 		if (up->port.startup)

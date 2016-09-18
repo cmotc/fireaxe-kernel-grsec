@@ -152,7 +152,7 @@ static int wil_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	struct wil6210_priv *wil;
 	struct device *dev = &pdev->dev;
 	int rc;
-	static const struct wil_platform_rops rops = {
+	const struct wil_platform_rops rops = {
 		.ramdump = wil_platform_rop_ramdump,
 		.fw_recovery = wil_platform_rop_fw_recovery,
 	};
@@ -275,6 +275,7 @@ static void wil_pcie_remove(struct pci_dev *pdev)
 	pci_disable_device(pdev);
 	if (wil->platform_ops.uninit)
 		wil->platform_ops.uninit(wil->platform_handle);
+	wil_p2p_wdev_free(wil);
 	wil_if_free(wil);
 }
 

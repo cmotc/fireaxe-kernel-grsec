@@ -72,7 +72,8 @@ static void scatterwalk_pagedone(struct scatter_walk *walk, int out,
 
 void scatterwalk_done(struct scatter_walk *walk, int out, int more)
 {
-	if (!(scatterwalk_pagelen(walk) & (PAGE_SIZE - 1)) || !more)
+	if (!more || walk->offset >= walk->sg->offset + walk->sg->length ||
+	    !(walk->offset & (PAGE_SIZE - 1)))
 		scatterwalk_pagedone(walk, out, more);
 }
 EXPORT_SYMBOL_GPL(scatterwalk_done);
@@ -109,20 +110,14 @@ void scatterwalk_map_and_copy(void *buf, struct scatterlist *sg,
 {
 	struct scatter_walk walk;
 	struct scatterlist tmp[2];
-	void *realbuf = buf;
 
 	if (!nbytes)
 		return;
 
 	sg = scatterwalk_ffwd(tmp, sg, start);
 
-#ifdef CONFIG_GRKERNSEC_KSTACKOVERFLOW
-	if (object_starts_on_stack(buf))
-		realbuf = buf - current->stack + current->lowmem_stack;
-#endif
-
-	if (sg_page(sg) == virt_to_page(realbuf) &&
-	    sg->offset == offset_in_page(realbuf))
+	if (sg_page(sg) == virt_to_page(buf) &&
+	    sg->offset == offset_in_page(buf))
 		return;
 
 	scatterwalk_start(&walk, sg);

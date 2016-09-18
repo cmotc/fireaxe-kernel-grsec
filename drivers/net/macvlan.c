@@ -335,7 +335,7 @@ static void macvlan_broadcast_enqueue(struct macvlan_port *port,
 free_nskb:
 	kfree_skb(nskb);
 err:
-	atomic_long_inc_unchecked(&skb->dev->rx_dropped);
+	atomic_long_inc(&skb->dev->rx_dropped);
 }
 
 static void macvlan_flush_sources(struct macvlan_port *port,
@@ -795,6 +795,7 @@ static int macvlan_init(struct net_device *dev)
 {
 	struct macvlan_dev *vlan = netdev_priv(dev);
 	const struct net_device *lowerdev = vlan->lowerdev;
+	struct macvlan_port *port = vlan->port;
 
 	dev->state		= (dev->state & ~MACVLAN_STATE_MASK) |
 				  (lowerdev->state & MACVLAN_STATE_MASK);
@@ -811,6 +812,8 @@ static int macvlan_init(struct net_device *dev)
 	vlan->pcpu_stats = netdev_alloc_pcpu_stats(struct vlan_pcpu_stats);
 	if (!vlan->pcpu_stats)
 		return -ENOMEM;
+
+	port->count += 1;
 
 	return 0;
 }
@@ -1312,10 +1315,9 @@ int macvlan_common_newlink(struct net *src_net, struct net_device *dev,
 			return err;
 	}
 
-	port->count += 1;
 	err = register_netdevice(dev);
 	if (err < 0)
-		goto destroy_port;
+		return err;
 
 	dev->priv_flags |= IFF_MACVLAN;
 	err = netdev_upper_dev_link(lowerdev, dev);
@@ -1330,10 +1332,6 @@ int macvlan_common_newlink(struct net *src_net, struct net_device *dev,
 
 unregister_netdev:
 	unregister_netdevice(dev);
-destroy_port:
-	port->count -= 1;
-	if (!port->count)
-		macvlan_port_destroy(lowerdev);
 
 	return err;
 }
@@ -1485,15 +1483,13 @@ static const struct nla_policy macvlan_policy[IFLA_MACVLAN_MAX + 1] = {
 int macvlan_link_register(struct rtnl_link_ops *ops)
 {
 	/* common fields */
-	pax_open_kernel();
-	const_cast(ops->priv_size)	= sizeof(struct macvlan_dev);
-	const_cast(ops->validate)	= macvlan_validate;
-	const_cast(ops->maxtype)	= IFLA_MACVLAN_MAX;
-	const_cast(ops->policy)		= macvlan_policy;
-	const_cast(ops->changelink)	= macvlan_changelink;
-	const_cast(ops->get_size)	= macvlan_get_size;
-	const_cast(ops->fill_info)	= macvlan_fill_info;
-	pax_close_kernel();
+	ops->priv_size		= sizeof(struct macvlan_dev);
+	ops->validate		= macvlan_validate;
+	ops->maxtype		= IFLA_MACVLAN_MAX;
+	ops->policy		= macvlan_policy;
+	ops->changelink		= macvlan_changelink;
+	ops->get_size		= macvlan_get_size;
+	ops->fill_info		= macvlan_fill_info;
 
 	return rtnl_link_register(ops);
 };
@@ -1581,7 +1577,7 @@ static int macvlan_device_event(struct notifier_block *unused,
 	return NOTIFY_DONE;
 }
 
-static struct notifier_block macvlan_notifier_block = {
+static struct notifier_block macvlan_notifier_block __read_mostly = {
 	.notifier_call	= macvlan_device_event,
 };
 

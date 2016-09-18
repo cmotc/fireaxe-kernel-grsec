@@ -190,7 +190,7 @@ static ssize_t iwl_dbgfs_sram_write(struct file *file,
 {
 	struct iwl_priv *priv = file->private_data;
 	char buf[64];
-	size_t buf_size;
+	int buf_size;
 	u32 offset, len;
 
 	memset(buf, 0, sizeof(buf));
@@ -335,7 +335,7 @@ static ssize_t iwl_dbgfs_channels_read(struct file *file, char __user *user_buf,
 	if (!buf)
 		return -ENOMEM;
 
-	supp_band = iwl_get_hw_mode(priv, IEEE80211_BAND_2GHZ);
+	supp_band = iwl_get_hw_mode(priv, NL80211_BAND_2GHZ);
 	if (supp_band) {
 		channels = supp_band->channels;
 
@@ -358,7 +358,7 @@ static ssize_t iwl_dbgfs_channels_read(struct file *file, char __user *user_buf,
 					IEEE80211_CHAN_NO_IR ?
 					"passive only" : "active/passive");
 	}
-	supp_band = iwl_get_hw_mode(priv, IEEE80211_BAND_5GHZ);
+	supp_band = iwl_get_hw_mode(priv, NL80211_BAND_5GHZ);
 	if (supp_band) {
 		channels = supp_band->channels;
 
@@ -456,7 +456,7 @@ static ssize_t iwl_dbgfs_rx_handlers_write(struct file *file,
 	struct iwl_priv *priv = file->private_data;
 
 	char buf[8];
-	size_t buf_size;
+	int buf_size;
 	u32 reset_flag;
 
 	memset(buf, 0, sizeof(buf));
@@ -537,7 +537,7 @@ static ssize_t iwl_dbgfs_disable_ht40_write(struct file *file,
 {
 	struct iwl_priv *priv = file->private_data;
 	char buf[8];
-	size_t buf_size;
+	int buf_size;
 	int ht40;
 
 	memset(buf, 0, sizeof(buf));
@@ -589,7 +589,7 @@ static ssize_t iwl_dbgfs_sleep_level_override_write(struct file *file,
 {
 	struct iwl_priv *priv = file->private_data;
 	char buf[8];
-	size_t buf_size;
+	int buf_size;
 	int value;
 
 	memset(buf, 0, sizeof(buf));
@@ -681,10 +681,10 @@ DEBUGFS_READ_FILE_OPS(temperature);
 DEBUGFS_READ_WRITE_FILE_OPS(sleep_level_override);
 DEBUGFS_READ_FILE_OPS(current_sleep_command);
 
-static const char fmt_value[] = "  %-30s %10u\n";
-static const char fmt_hex[]   = "  %-30s       0x%02X\n";
-static const char fmt_table[] = "  %-30s %10u  %10u  %10u  %10u\n";
-static const char fmt_header[] =
+static const char *fmt_value = "  %-30s %10u\n";
+static const char *fmt_hex   = "  %-30s       0x%02X\n";
+static const char *fmt_table = "  %-30s %10u  %10u  %10u  %10u\n";
+static const char *fmt_header =
 	"%-32s    current  cumulative       delta         max\n";
 
 static int iwl_statistics_flag(struct iwl_priv *priv, char *buf, int bufsz)
@@ -1854,7 +1854,7 @@ static ssize_t iwl_dbgfs_clear_ucode_statistics_write(struct file *file,
 {
 	struct iwl_priv *priv = file->private_data;
 	char buf[8];
-	size_t buf_size;
+	int buf_size;
 	int clear;
 
 	memset(buf, 0, sizeof(buf));
@@ -1899,7 +1899,7 @@ static ssize_t iwl_dbgfs_ucode_tracing_write(struct file *file,
 {
 	struct iwl_priv *priv = file->private_data;
 	char buf[8];
-	size_t buf_size;
+	int buf_size;
 	int trace;
 
 	memset(buf, 0, sizeof(buf));
@@ -1970,7 +1970,7 @@ static ssize_t iwl_dbgfs_missed_beacon_write(struct file *file,
 {
 	struct iwl_priv *priv = file->private_data;
 	char buf[8];
-	size_t buf_size;
+	int buf_size;
 	int missed;
 
 	memset(buf, 0, sizeof(buf));
@@ -2011,7 +2011,7 @@ static ssize_t iwl_dbgfs_plcp_delta_write(struct file *file,
 
 	struct iwl_priv *priv = file->private_data;
 	char buf[8];
-	size_t buf_size;
+	int buf_size;
 	int plcp;
 
 	memset(buf, 0, sizeof(buf));
@@ -2071,7 +2071,7 @@ static ssize_t iwl_dbgfs_txfifo_flush_write(struct file *file,
 
 	struct iwl_priv *priv = file->private_data;
 	char buf[8];
-	size_t buf_size;
+	int buf_size;
 	int flush;
 
 	memset(buf, 0, sizeof(buf));
@@ -2161,7 +2161,7 @@ static ssize_t iwl_dbgfs_protection_mode_write(struct file *file,
 
 	struct iwl_priv *priv = file->private_data;
 	char buf[8];
-	size_t buf_size;
+	int buf_size;
 	int rts;
 
 	if (!priv->cfg->ht_params)
@@ -2202,7 +2202,7 @@ static ssize_t iwl_dbgfs_echo_test_write(struct file *file,
 {
 	struct iwl_priv *priv = file->private_data;
 	char buf[8];
-	size_t buf_size;
+	int buf_size;
 
 	memset(buf, 0, sizeof(buf));
 	buf_size = min(count, sizeof(buf) -  1);
@@ -2236,7 +2236,7 @@ static ssize_t iwl_dbgfs_log_event_write(struct file *file,
 	struct iwl_priv *priv = file->private_data;
 	u32 event_log_flag;
 	char buf[8];
-	size_t buf_size;
+	int buf_size;
 
 	/* check that the interface is up */
 	if (!iwl_is_ready(priv))
@@ -2290,7 +2290,7 @@ static ssize_t iwl_dbgfs_calib_disabled_write(struct file *file,
 	struct iwl_priv *priv = file->private_data;
 	char buf[8];
 	u32 calib_disabled;
-	size_t buf_size;
+	int buf_size;
 
 	memset(buf, 0, sizeof(buf));
 	buf_size = min(count, sizeof(buf) - 1);

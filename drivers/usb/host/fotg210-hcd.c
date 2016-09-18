@@ -4795,14 +4795,8 @@ static DEVICE_ATTR(uframe_periodic_max, 0644, show_uframe_periodic_max,
 static inline int create_sysfs_files(struct fotg210_hcd *fotg210)
 {
 	struct device *controller = fotg210_to_hcd(fotg210)->self.controller;
-	int i = 0;
 
-	if (i)
-		goto out;
-
-	i = device_create_file(controller, &dev_attr_uframe_periodic_max);
-out:
-	return i;
+	return device_create_file(controller, &dev_attr_uframe_periodic_max);
 }
 
 static inline void remove_sysfs_files(struct fotg210_hcd *fotg210)
@@ -5031,7 +5025,7 @@ static int hcd_fotg210_init(struct usb_hcd *hcd)
 
 	/* Accept arbitrarily long scatter-gather lists */
 	if (!(hcd->driver->flags & HCD_LOCAL_MEM))
-		hcd->self.sg_tablesize = SG_ALL;
+		hcd->self.sg_tablesize = ~0;
 	return 0;
 }
 

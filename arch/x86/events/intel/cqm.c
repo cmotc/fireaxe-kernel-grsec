@@ -1479,7 +1479,7 @@ static struct attribute *intel_cmt_mbm_events_attr[] = {
 	NULL,
 };
 
-static attribute_group_no_const intel_cqm_events_group __read_only = {
+static struct attribute_group intel_cqm_events_group = {
 	.name = "events",
 	.attrs = NULL,
 };
@@ -1737,9 +1737,7 @@ static int __init intel_cqm_init(void)
 		goto out;
 	}
 
-	pax_open_kernel();
-	const_cast(event_attr_intel_cqm_llc_scale.event_str) = str;
-	pax_close_kernel();
+	event_attr_intel_cqm_llc_scale.event_str = str;
 
 	ret = intel_cqm_setup_rmid_cache();
 	if (ret)
@@ -1755,14 +1753,12 @@ static int __init intel_cqm_init(void)
 	if (ret && !cqm_enabled)
 		goto out;
 
-	pax_open_kernel();
 	if (cqm_enabled && mbm_enabled)
-		const_cast(intel_cqm_events_group.attrs) = intel_cmt_mbm_events_attr;
+		intel_cqm_events_group.attrs = intel_cmt_mbm_events_attr;
 	else if (!cqm_enabled && mbm_enabled)
-		const_cast(intel_cqm_events_group.attrs) = intel_mbm_events_attr;
+		intel_cqm_events_group.attrs = intel_mbm_events_attr;
 	else if (cqm_enabled && !mbm_enabled)
-		const_cast(intel_cqm_events_group.attrs) = intel_cqm_events_attr;
-	pax_close_kernel();
+		intel_cqm_events_group.attrs = intel_cqm_events_attr;
 
 	ret = perf_pmu_register(&intel_cqm_pmu, "intel_cqm", -1);
 	if (ret) {

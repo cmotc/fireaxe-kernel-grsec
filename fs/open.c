@@ -32,8 +32,6 @@
 #include <linux/dnotify.h>
 #include <linux/compat.h>
 
-#define CREATE_TRACE_POINTS
-#include <trace/events/fs.h>
 #include "internal.h"
 
 int do_truncate(struct dentry *dentry, loff_t length, unsigned int time_attrs,
@@ -67,7 +65,7 @@ int do_truncate(struct dentry *dentry, loff_t length, unsigned int time_attrs,
 	return ret;
 }
 
-long vfs_truncate(struct path *path, loff_t length)
+long vfs_truncate(const struct path *path, loff_t length)
 {
 	struct inode *inode;
 	long error;
@@ -107,8 +105,6 @@ long vfs_truncate(struct path *path, loff_t length)
 	error = locks_verify_truncate(inode, NULL, length);
 	if (!error)
 		error = security_path_truncate(path);
-	if (!error && !gr_acl_handle_truncate(path->dentry, path->mnt))
-		error = -EACCES;
 	if (!error)
 		error = do_truncate(path->dentry, length, 0, NULL);
 
@@ -193,8 +189,6 @@ static long do_sys_ftruncate(unsigned int fd, loff_t length, int small)
 	error = locks_verify_truncate(inode, f.file, length);
 	if (!error)
 		error = security_path_truncate(&f.file->f_path);
-	if (!error && !gr_acl_handle_truncate(f.file->f_path.dentry, f.file->f_path.mnt))
-		error = -EACCES;
 	if (!error)
 		error = do_truncate(dentry, length, ATTR_MTIME|ATTR_CTIME, f.file);
 	sb_end_write(inode->i_sb);
@@ -404,9 +398,6 @@ retry:
 	if (__mnt_is_readonly(path.mnt))
 		res = -EROFS;
 
-	if (!res && !gr_acl_handle_access(path.dentry, path.mnt, mode))
-		res = -EACCES;
-
 out_path_release:
 	path_put(&path);
 	if (retry_estale(res, lookup_flags)) {
@@ -438,8 +429,6 @@ retry:
 	if (error)
 		goto dput_and_out;
 
-	gr_log_chdir(path.dentry, path.mnt);
-
 	set_fs_pwd(current->fs, &path);
 
 dput_and_out:
@@ -469,13 +458,6 @@ SYSCALL_DEFINE1(fchdir, unsigned int, fd)
 		goto out_putf;
 
 	error = inode_permission(inode, MAY_EXEC | MAY_CHDIR);
-
-	if (!error && !gr_chroot_fchdir(f.file->f_path.dentry, f.file->f_path.mnt))
-		error = -EPERM;
-
-	if (!error)
-		gr_log_chdir(f.file->f_path.dentry, f.file->f_path.mnt);
-
 	if (!error)
 		set_fs_pwd(current->fs, &f.file->f_path);
 out_putf:
@@ -505,13 +487,7 @@ retry:
 	if (error)
 		goto dput_and_out;
 
-	if (gr_handle_chroot_chroot(path.dentry, path.mnt))
-		goto dput_and_out;
-
 	set_fs_root(current->fs, &path);
-
-	gr_handle_chroot_chdir(&path);
-
 	error = 0;
 dput_and_out:
 	path_put(&path);
@@ -523,7 +499,7 @@ out:
 	return error;
 }
 
-static int chmod_common(struct path *path, umode_t mode)
+static int chmod_common(const struct path *path, umode_t mode)
 {
 	struct inode *inode = path->dentry->d_inode;
 	struct inode *delegated_inode = NULL;
@@ -535,16 +511,6 @@ static int chmod_common(struct path *path, umode_t mode)
 		return error;
 retry_deleg:
 	inode_lock(inode);
-
-	if (!gr_acl_handle_chmod(path->dentry, path->mnt, &mode)) {
-		error = -EACCES;
-		goto out_unlock;
-	}
-	if (gr_handle_chroot_chmod(path->dentry, path->mnt, mode)) {
-		error = -EACCES;
-		goto out_unlock;
-	}
-
 	error = security_path_chmod(path, mode);
 	if (error)
 		goto out_unlock;
@@ -598,7 +564,7 @@ SYSCALL_DEFINE2(chmod, const char __user *, filename, umode_t, mode)
 	return sys_fchmodat(AT_FDCWD, filename, mode);
 }
 
-static int chown_common(struct path *path, uid_t user, gid_t group)
+static int chown_common(const struct path *path, uid_t user, gid_t group)
 {
 	struct inode *inode = path->dentry->d_inode;
 	struct inode *delegated_inode = NULL;
@@ -609,9 +575,6 @@ static int chown_common(struct path *path, uid_t user, gid_t group)
 
 	uid = make_kuid(current_user_ns(), user);
 	gid = make_kgid(current_user_ns(), group);
-
-	if (!gr_acl_handle_chown(path->dentry, path->mnt))
-		return -EACCES;
 
 retry_deleg:
 	newattrs.ia_valid =  ATTR_CTIME;
@@ -750,7 +713,7 @@ static int do_dentry_open(struct file *f,
 	}
 
 	/* POSIX.1-2008/SUSv4 Section XSI 2.9.7 */
-	if (S_ISREG(inode->i_mode))
+	if (S_ISREG(inode->i_mode) || S_ISDIR(inode->i_mode))
 		f->f_mode |= FMODE_ATOMIC_POS;
 
 	f->f_op = fops_get(inode->i_fop);
@@ -1057,7 +1020,6 @@ long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
 		} else {
 			fsnotify_open(f);
 			fd_install(fd, f);
-			trace_do_sys_open(tmp->name, flags, mode);
 		}
 	}
 	putname(tmp);

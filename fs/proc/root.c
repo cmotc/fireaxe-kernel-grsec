@@ -194,15 +194,7 @@ void __init proc_root_init(void)
 	proc_create_mount_point("openprom");
 #endif
 	proc_tty_init();
-#ifdef CONFIG_GRKERNSEC_PROC_ADD
-#ifdef CONFIG_GRKERNSEC_PROC_USER
-	proc_mkdir_mode("bus", S_IRUSR | S_IXUSR, NULL);
-#elif defined(CONFIG_GRKERNSEC_PROC_USERGROUP)
-	proc_mkdir_mode("bus", S_IRUSR | S_IXUSR | S_IRGRP | S_IXGRP, NULL);
-#endif
-#else
 	proc_mkdir("bus", NULL);
-#endif
 	proc_sys_init();
 }
 
@@ -241,8 +233,8 @@ static int proc_root_readdir(struct file *file, struct dir_context *ctx)
  */
 static const struct file_operations proc_root_operations = {
 	.read		 = generic_read_dir,
-	.iterate	 = proc_root_readdir,
-	.llseek		= default_llseek,
+	.iterate_shared	 = proc_root_readdir,
+	.llseek		= generic_file_llseek,
 };
 
 /*

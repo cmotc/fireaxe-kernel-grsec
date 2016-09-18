@@ -31,8 +31,6 @@
 #include <linux/module.h>
 #include <linux/netdevice.h>
 #include <linux/platform_device.h>
-#include <linux/interrupt.h>
-#include <linux/irqreturn.h>
 
 #include "ftmac100.h"
 
@@ -1011,7 +1009,7 @@ static int ftmac100_stop(struct net_device *netdev)
 	return 0;
 }
 
-static netdev_tx_t ftmac100_hard_start_xmit(struct sk_buff *skb, struct net_device *netdev)
+static int ftmac100_hard_start_xmit(struct sk_buff *skb, struct net_device *netdev)
 {
 	struct ftmac100 *priv = netdev_priv(netdev);
 	dma_addr_t map;

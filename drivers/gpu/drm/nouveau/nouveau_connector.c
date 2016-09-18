@@ -34,7 +34,7 @@
 #include <drm/drm_crtc_helper.h>
 
 #include "nouveau_reg.h"
-#include "nouveau_drm.h"
+#include "nouveau_drv.h"
 #include "dispnv04/hw.h"
 #include "nouveau_acpi.h"
 
@@ -862,7 +862,7 @@ get_tmds_link_bandwidth(struct drm_connector *connector, bool hdmi)
 		return 112000;
 }
 
-static enum drm_mode_status
+static int
 nouveau_connector_mode_valid(struct drm_connector *connector,
 			     struct drm_display_mode *mode)
 {

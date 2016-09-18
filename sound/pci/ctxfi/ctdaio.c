@@ -687,9 +687,8 @@ static int daio_mgr_commit_write(struct daio_mgr *mgr)
 	return 0;
 }
 
-int daio_mgr_create(struct hw *hw, void **_rdaio_mgr)
+int daio_mgr_create(struct hw *hw, struct daio_mgr **rdaio_mgr)
 {
-	struct daio_mgr **rdaio_mgr = (struct daio_mgr **)_rdaio_mgr;
 	int err, i;
 	struct daio_mgr *daio_mgr;
 	struct imapper *entry;
@@ -742,9 +741,8 @@ error1:
 	return err;
 }
 
-int daio_mgr_destroy(void *_daio_mgr)
+int daio_mgr_destroy(struct daio_mgr *daio_mgr)
 {
-	struct daio_mgr *daio_mgr = _daio_mgr;
 	unsigned long flags;
 
 	/* free daio input mapper list */

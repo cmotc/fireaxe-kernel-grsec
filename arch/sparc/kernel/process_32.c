@@ -123,14 +123,14 @@ void show_regs(struct pt_regs *r)
 
         printk("PSR: %08lx PC: %08lx NPC: %08lx Y: %08lx    %s\n",
 	       r->psr, r->pc, r->npc, r->y, print_tainted());
-	printk("PC: <%pA>\n", (void *) r->pc);
+	printk("PC: <%pS>\n", (void *) r->pc);
 	printk("%%G: %08lx %08lx  %08lx %08lx  %08lx %08lx  %08lx %08lx\n",
 	       r->u_regs[0], r->u_regs[1], r->u_regs[2], r->u_regs[3],
 	       r->u_regs[4], r->u_regs[5], r->u_regs[6], r->u_regs[7]);
 	printk("%%O: %08lx %08lx  %08lx %08lx  %08lx %08lx  %08lx %08lx\n",
 	       r->u_regs[8], r->u_regs[9], r->u_regs[10], r->u_regs[11],
 	       r->u_regs[12], r->u_regs[13], r->u_regs[14], r->u_regs[15]);
-	printk("RPC: <%pA>\n", (void *) r->u_regs[15]);
+	printk("RPC: <%pS>\n", (void *) r->u_regs[15]);
 
 	printk("%%L: %08lx %08lx  %08lx %08lx  %08lx %08lx  %08lx %08lx\n",
 	       rw->locals[0], rw->locals[1], rw->locals[2], rw->locals[3],
@@ -167,7 +167,7 @@ void show_stack(struct task_struct *tsk, unsigned long *_ksp)
 		rw = (struct reg_window32 *) fp;
 		pc = rw->ins[7];
 		printk("[%08lx : ", pc);
-		printk("%pA ] ", (void *) pc);
+		printk("%pS ] ", (void *) pc);
 		fp = rw->ins[6];
 	} while (++count < 16);
 	printk("\n");
@@ -184,21 +184,21 @@ unsigned long thread_saved_pc(struct task_struct *tsk)
 /*
  * Free current thread data structures etc..
  */
-void exit_thread(void)
+void exit_thread(struct task_struct *tsk)
 {
 #ifndef CONFIG_SMP
-	if(last_task_used_math == current) {
+	if (last_task_used_math == tsk) {
 #else
-	if (test_thread_flag(TIF_USEDFPU)) {
+	if (test_ti_thread_flag(task_thread_info(tsk), TIF_USEDFPU)) {
 #endif
 		/* Keep process from leaving FPU in a bogon state. */
 		put_psr(get_psr() | PSR_EF);
-		fpsave(&current->thread.float_regs[0], &current->thread.fsr,
-		       &current->thread.fpqueue[0], &current->thread.fpqdepth);
+		fpsave(&tsk->thread.float_regs[0], &tsk->thread.fsr,
+		       &tsk->thread.fpqueue[0], &tsk->thread.fpqdepth);
 #ifndef CONFIG_SMP
 		last_task_used_math = NULL;
 #else
-		clear_thread_flag(TIF_USEDFPU);
+		clear_ti_thread_flag(task_thread_info(tsk), TIF_USEDFPU);
 #endif
 	}
 }

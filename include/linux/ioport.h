@@ -26,6 +26,9 @@ struct resource {
 
 /*
  * IO resources have these defined flags.
+ *
+ * PCI devices expose these flags to userspace in the "resource" sysfs file,
+ * so don't move them.
  */
 #define IORESOURCE_BITS		0x000000ff	/* Bus-specific bits */
 
@@ -110,6 +113,7 @@ struct resource {
 
 /* PCI control bits.  Shares IORESOURCE_BITS with above PCI ROM.  */
 #define IORESOURCE_PCI_FIXED		(1<<4)	/* Do not move resource */
+#define IORESOURCE_PCI_EA_BEI		(1<<5)	/* BAR Equivalent Indicator */
 
 /*
  * I/O Resource Descriptors
@@ -186,7 +190,7 @@ struct resource *lookup_resource(struct resource *root, resource_size_t start);
 int adjust_resource(struct resource *res, resource_size_t start,
 		    resource_size_t size);
 resource_size_t resource_alignment(struct resource *res);
-static inline resource_size_t __intentional_overflow(-1) resource_size(const struct resource *res)
+static inline resource_size_t resource_size(const struct resource *res)
 {
 	return res->end - res->start + 1;
 }

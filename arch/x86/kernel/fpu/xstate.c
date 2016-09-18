@@ -122,14 +122,14 @@ EXPORT_SYMBOL_GPL(cpu_has_xfeatures);
  */
 void fpstate_sanitize_xstate(struct fpu *fpu)
 {
-	struct fxregs_state *fx = &fpu->state->fxsave;
+	struct fxregs_state *fx = &fpu->state.fxsave;
 	int feature_bit;
 	u64 xfeatures;
 
 	if (!use_xsaveopt())
 		return;
 
-	xfeatures = fpu->state->xsave.header.xfeatures;
+	xfeatures = fpu->state.xsave.header.xfeatures;
 
 	/*
 	 * None of the feature bits are in init state. So nothing else
@@ -190,7 +190,7 @@ void fpstate_sanitize_xstate(struct fpu *fpu)
  */
 void fpu__init_cpu_xstate(void)
 {
-	if (!cpu_has_xsave || !xfeatures_mask)
+	if (!boot_cpu_has(X86_FEATURE_XSAVE) || !xfeatures_mask)
 		return;
 
 	cr4_set_bits(X86_CR4_OSXSAVE);
@@ -280,7 +280,7 @@ static void __init setup_xstate_comp(void)
 	xstate_comp_offsets[0] = 0;
 	xstate_comp_offsets[1] = offsetof(struct fxregs_state, xmm_space);
 
-	if (!cpu_has_xsaves) {
+	if (!boot_cpu_has(X86_FEATURE_XSAVES)) {
 		for (i = FIRST_EXTENDED_XFEATURE; i < XFEATURE_MAX; i++) {
 			if (xfeature_enabled(i)) {
 				xstate_comp_offsets[i] = xstate_offsets[i];
@@ -316,13 +316,13 @@ static void __init setup_init_fpu_buf(void)
 	WARN_ON_FPU(!on_boot_cpu);
 	on_boot_cpu = 0;
 
-	if (!cpu_has_xsave)
+	if (!boot_cpu_has(X86_FEATURE_XSAVE))
 		return;
 
 	setup_xstate_features();
 	print_xstate_features();
 
-	if (cpu_has_xsaves) {
+	if (boot_cpu_has(X86_FEATURE_XSAVES)) {
 		init_fpstate.xsave.header.xcomp_bv = (u64)1 << 63 | xfeatures_mask;
 		init_fpstate.xsave.header.xfeatures = xfeatures_mask;
 	}
@@ -417,7 +417,7 @@ static int xfeature_size(int xfeature_nr)
  */
 static int using_compacted_format(void)
 {
-	return cpu_has_xsaves;
+	return boot_cpu_has(X86_FEATURE_XSAVES);
 }
 
 static void __xstate_dump_leaves(void)
@@ -549,7 +549,7 @@ static unsigned int __init calculate_xstate_size(void)
 	unsigned int eax, ebx, ecx, edx;
 	unsigned int calculated_xstate_size;
 
-	if (!cpu_has_xsaves) {
+	if (!boot_cpu_has(X86_FEATURE_XSAVES)) {
 		/*
 		 * - CPUID function 0DH, sub-function 0:
 		 *    EBX enumerates the size (in bytes) required by
@@ -630,7 +630,7 @@ void __init fpu__init_system_xstate(void)
 	WARN_ON_FPU(!on_boot_cpu);
 	on_boot_cpu = 0;
 
-	if (!cpu_has_xsave) {
+	if (!boot_cpu_has(X86_FEATURE_XSAVE)) {
 		pr_info("x86/fpu: Legacy x87 FPU detected.\n");
 		return;
 	}
@@ -667,7 +667,7 @@ void __init fpu__init_system_xstate(void)
 	pr_info("x86/fpu: Enabled xstate features 0x%llx, context size is %d bytes, using '%s' format.\n",
 		xfeatures_mask,
 		xstate_size,
-		cpu_has_xsaves ? "compacted" : "standard");
+		boot_cpu_has(X86_FEATURE_XSAVES) ? "compacted" : "standard");
 }
 
 /*
@@ -678,7 +678,7 @@ void fpu__resume_cpu(void)
 	/*
 	 * Restore XCR0 on xsave capable CPUs:
 	 */
-	if (cpu_has_xsave)
+	if (boot_cpu_has(X86_FEATURE_XSAVE))
 		xsetbv(XCR_XFEATURE_ENABLED_MASK, xfeatures_mask);
 }
 
@@ -775,7 +775,7 @@ const void *get_xsave_field_ptr(int xsave_state)
 	 */
 	fpu__save(fpu);
 
-	return get_xsave_addr(&fpu->state->xsave, xsave_state);
+	return get_xsave_addr(&fpu->state.xsave, xsave_state);
 }
 
 
@@ -808,7 +808,7 @@ static void fpu__xfeature_set_non_init(struct xregs_state *xsave,
 static void fpu__xfeature_set_state(int xstate_feature_mask,
 		void *xstate_feature_src, size_t len)
 {
-	struct xregs_state *xsave = &current->thread.fpu.state->xsave;
+	struct xregs_state *xsave = &current->thread.fpu.state.xsave;
 	struct fpu *fpu = &current->thread.fpu;
 	void *dst;
 
@@ -836,7 +836,7 @@ static void fpu__xfeature_set_state(int xstate_feature_mask,
 	}
 
 	/* find the location in the xsave buffer of the desired state */
-	dst = __raw_xsave_addr(&fpu->state->xsave, xstate_feature_mask);
+	dst = __raw_xsave_addr(&fpu->state.xsave, xstate_feature_mask);
 
 	/*
 	 * Make sure that the pointer being passed in did not
@@ -874,7 +874,7 @@ out:
 int arch_set_user_pkey_access(struct task_struct *tsk, int pkey,
 		unsigned long init_val)
 {
-	struct xregs_state *xsave = &tsk->thread.fpu.state->xsave;
+	struct xregs_state *xsave = &tsk->thread.fpu.state.xsave;
 	struct pkru_state *old_pkru_state;
 	struct pkru_state new_pkru_state;
 	int pkey_shift = (pkey * PKRU_BITS_PER_PKEY);

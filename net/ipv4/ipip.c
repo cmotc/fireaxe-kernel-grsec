@@ -123,7 +123,7 @@ MODULE_PARM_DESC(log_ecn_error, "Log packets received with corrupted ECN");
 static int ipip_net_id __read_mostly;
 
 static int ipip_tunnel_init(struct net_device *dev);
-static struct rtnl_link_ops ipip_link_ops;
+static struct rtnl_link_ops ipip_link_ops __read_mostly;
 
 static int ipip_err(struct sk_buff *skb, u32 info)
 {
@@ -219,9 +219,8 @@ static netdev_tx_t ipip_tunnel_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (unlikely(skb->protocol != htons(ETH_P_IP)))
 		goto tx_error;
 
-	skb = iptunnel_handle_offloads(skb, SKB_GSO_IPIP);
-	if (IS_ERR(skb))
-		goto out;
+	if (iptunnel_handle_offloads(skb, SKB_GSO_IPXIP4))
+		goto tx_error;
 
 	skb_set_inner_ipproto(skb, IPPROTO_IPIP);
 
@@ -230,7 +229,7 @@ static netdev_tx_t ipip_tunnel_xmit(struct sk_buff *skb, struct net_device *dev)
 
 tx_error:
 	kfree_skb(skb);
-out:
+
 	dev->stats.tx_errors++;
 	return NETDEV_TX_OK;
 }
@@ -484,7 +483,7 @@ static const struct nla_policy ipip_policy[IFLA_IPTUN_MAX + 1] = {
 	[IFLA_IPTUN_ENCAP_DPORT]	= { .type = NLA_U16 },
 };
 
-static struct rtnl_link_ops ipip_link_ops = {
+static struct rtnl_link_ops ipip_link_ops __read_mostly = {
 	.kind		= "ipip",
 	.maxtype	= IFLA_IPTUN_MAX,
 	.policy		= ipip_policy,

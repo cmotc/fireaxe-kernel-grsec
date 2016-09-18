@@ -130,14 +130,14 @@ static struct rcu_torture __rcu *rcu_torture_current;
 static unsigned long rcu_torture_current_version;
 static struct rcu_torture rcu_tortures[10 * RCU_TORTURE_PIPE_LEN];
 static DEFINE_SPINLOCK(rcu_torture_lock);
-static DEFINE_PER_CPU(long [RCU_TORTURE_PIPE_LEN + 1], rcu_torture_count) = { 0 };
-static DEFINE_PER_CPU(long [RCU_TORTURE_PIPE_LEN + 1], rcu_torture_batch) = { 0 };
-static atomic_unchecked_t rcu_torture_wcount[RCU_TORTURE_PIPE_LEN + 1];
-static atomic_unchecked_t n_rcu_torture_alloc;
-static atomic_unchecked_t n_rcu_torture_alloc_fail;
-static atomic_unchecked_t n_rcu_torture_free;
-static atomic_unchecked_t n_rcu_torture_mberror;
-static atomic_unchecked_t n_rcu_torture_error;
+static DEFINE_PER_CPU(long [RCU_TORTURE_PIPE_LEN + 1], rcu_torture_count);
+static DEFINE_PER_CPU(long [RCU_TORTURE_PIPE_LEN + 1], rcu_torture_batch);
+static atomic_t rcu_torture_wcount[RCU_TORTURE_PIPE_LEN + 1];
+static atomic_t n_rcu_torture_alloc;
+static atomic_t n_rcu_torture_alloc_fail;
+static atomic_t n_rcu_torture_free;
+static atomic_t n_rcu_torture_mberror;
+static atomic_t n_rcu_torture_error;
 static long n_rcu_torture_barrier_error;
 static long n_rcu_torture_boost_ktrerror;
 static long n_rcu_torture_boost_rterror;
@@ -146,7 +146,7 @@ static long n_rcu_torture_boosts;
 static long n_rcu_torture_timers;
 static long n_barrier_attempts;
 static long n_barrier_successes;
-static atomic_long_unchecked_t n_cbfloods;
+static atomic_long_t n_cbfloods;
 static struct list_head rcu_torture_removed;
 
 static int rcu_torture_writer_state;
@@ -230,11 +230,11 @@ rcu_torture_alloc(void)
 
 	spin_lock_bh(&rcu_torture_lock);
 	if (list_empty(&rcu_torture_freelist)) {
-		atomic_inc_unchecked(&n_rcu_torture_alloc_fail);
+		atomic_inc(&n_rcu_torture_alloc_fail);
 		spin_unlock_bh(&rcu_torture_lock);
 		return NULL;
 	}
-	atomic_inc_unchecked(&n_rcu_torture_alloc);
+	atomic_inc(&n_rcu_torture_alloc);
 	p = rcu_torture_freelist.next;
 	list_del_init(p);
 	spin_unlock_bh(&rcu_torture_lock);
@@ -247,7 +247,7 @@ rcu_torture_alloc(void)
 static void
 rcu_torture_free(struct rcu_torture *p)
 {
-	atomic_inc_unchecked(&n_rcu_torture_free);
+	atomic_inc(&n_rcu_torture_free);
 	spin_lock_bh(&rcu_torture_lock);
 	list_add_tail(&p->rtort_free, &rcu_torture_freelist);
 	spin_unlock_bh(&rcu_torture_lock);
@@ -328,7 +328,7 @@ rcu_torture_pipe_update_one(struct rcu_torture *rp)
 	i = rp->rtort_pipe_count;
 	if (i > RCU_TORTURE_PIPE_LEN)
 		i = RCU_TORTURE_PIPE_LEN;
-	atomic_inc_unchecked(&rcu_torture_wcount[i]);
+	atomic_inc(&rcu_torture_wcount[i]);
 	if (++rp->rtort_pipe_count >= RCU_TORTURE_PIPE_LEN) {
 		rp->rtort_mbtest = 0;
 		return true;
@@ -858,7 +858,7 @@ rcu_torture_cbflood(void *arg)
 	VERBOSE_TOROUT_STRING("rcu_torture_cbflood task started");
 	do {
 		schedule_timeout_interruptible(cbflood_inter_holdoff);
-		atomic_long_inc_unchecked(&n_cbfloods);
+		atomic_long_inc(&n_cbfloods);
 		WARN_ON(signal_pending(current));
 		for (i = 0; i < cbflood_n_burst; i++) {
 			for (j = 0; j < cbflood_n_per_burst; j++) {
@@ -916,7 +916,7 @@ rcu_torture_fqs(void *arg)
 static int
 rcu_torture_writer(void *arg)
 {
-	bool can_expedite = !rcu_gp_is_expedited();
+	bool can_expedite = !rcu_gp_is_expedited() && !rcu_gp_is_normal();
 	int expediting = 0;
 	unsigned long gp_snap;
 	bool gp_cond1 = gp_cond, gp_exp1 = gp_exp, gp_normal1 = gp_normal;
@@ -932,7 +932,7 @@ rcu_torture_writer(void *arg)
 	VERBOSE_TOROUT_STRING("rcu_torture_writer task started");
 	if (!can_expedite) {
 		pr_alert("%s" TORTURE_FLAG
-			 " Grace periods expedited from boot/sysfs for %s,\n",
+			 " GP expediting controlled from boot/sysfs for %s,\n",
 			 torture_type, cur_ops->name);
 		pr_alert("%s" TORTURE_FLAG
 			 " Disabled dynamic grace-period expediting.\n",
@@ -988,7 +988,7 @@ rcu_torture_writer(void *arg)
 			i = old_rp->rtort_pipe_count;
 			if (i > RCU_TORTURE_PIPE_LEN)
 				i = RCU_TORTURE_PIPE_LEN;
-			atomic_inc_unchecked(&rcu_torture_wcount[i]);
+			atomic_inc(&rcu_torture_wcount[i]);
 			old_rp->rtort_pipe_count++;
 			switch (synctype[torture_random(&rand) % nsynctypes]) {
 			case RTWS_DEF_FREE:
@@ -1082,17 +1082,6 @@ rcu_torture_fakewriter(void *arg)
 	return 0;
 }
 
-static void rcutorture_trace_dump(void)
-{
-	static atomic_t beenhere = ATOMIC_INIT(0);
-
-	if (atomic_read(&beenhere))
-		return;
-	if (atomic_xchg(&beenhere, 1) != 0)
-		return;
-	ftrace_dump(DUMP_ALL);
-}
-
 /*
  * RCU torture reader from timer handler.  Dereferences rcu_torture_current,
  * incrementing the corresponding element of the pipeline array.  The
@@ -1127,7 +1116,7 @@ static void rcu_torture_timer(unsigned long unused)
 		return;
 	}
 	if (p->rtort_mbtest == 0)
-		atomic_inc_unchecked(&n_rcu_torture_mberror);
+		atomic_inc(&n_rcu_torture_mberror);
 	spin_lock(&rand_lock);
 	cur_ops->read_delay(&rand);
 	n_rcu_torture_timers++;
@@ -1142,7 +1131,7 @@ static void rcu_torture_timer(unsigned long unused)
 	if (pipe_count > 1) {
 		do_trace_rcu_torture_read(cur_ops->name, &p->rtort_rcu, ts,
 					  started, completed);
-		rcutorture_trace_dump();
+		rcu_ftrace_dump(DUMP_ALL);
 	}
 	__this_cpu_inc(rcu_torture_count[pipe_count]);
 	completed = completed - started;
@@ -1203,7 +1192,7 @@ rcu_torture_reader(void *arg)
 			continue;
 		}
 		if (p->rtort_mbtest == 0)
-			atomic_inc_unchecked(&n_rcu_torture_mberror);
+			atomic_inc(&n_rcu_torture_mberror);
 		cur_ops->read_delay(&rand);
 		preempt_disable();
 		pipe_count = p->rtort_pipe_count;
@@ -1215,7 +1204,7 @@ rcu_torture_reader(void *arg)
 		if (pipe_count > 1) {
 			do_trace_rcu_torture_read(cur_ops->name, &p->rtort_rcu,
 						  ts, started, completed);
-			rcutorture_trace_dump();
+			rcu_ftrace_dump(DUMP_ALL);
 		}
 		__this_cpu_inc(rcu_torture_count[pipe_count]);
 		completed = completed - started;
@@ -1271,11 +1260,11 @@ rcu_torture_stats_print(void)
 		rcu_torture_current,
 		rcu_torture_current_version,
 		list_empty(&rcu_torture_freelist),
-		atomic_read_unchecked(&n_rcu_torture_alloc),
-		atomic_read_unchecked(&n_rcu_torture_alloc_fail),
-		atomic_read_unchecked(&n_rcu_torture_free));
+		atomic_read(&n_rcu_torture_alloc),
+		atomic_read(&n_rcu_torture_alloc_fail),
+		atomic_read(&n_rcu_torture_free));
 	pr_cont("rtmbe: %d rtbke: %ld rtbre: %ld ",
-		atomic_read_unchecked(&n_rcu_torture_mberror),
+		atomic_read(&n_rcu_torture_mberror),
 		n_rcu_torture_boost_ktrerror,
 		n_rcu_torture_boost_rterror);
 	pr_cont("rtbf: %ld rtb: %ld nt: %ld ",
@@ -1287,17 +1276,17 @@ rcu_torture_stats_print(void)
 		n_barrier_successes,
 		n_barrier_attempts,
 		n_rcu_torture_barrier_error);
-	pr_cont("cbflood: %ld\n", atomic_long_read_unchecked(&n_cbfloods));
+	pr_cont("cbflood: %ld\n", atomic_long_read(&n_cbfloods));
 
 	pr_alert("%s%s ", torture_type, TORTURE_FLAG);
-	if (atomic_read_unchecked(&n_rcu_torture_mberror) != 0 ||
+	if (atomic_read(&n_rcu_torture_mberror) != 0 ||
 	    n_rcu_torture_barrier_error != 0 ||
 	    n_rcu_torture_boost_ktrerror != 0 ||
 	    n_rcu_torture_boost_rterror != 0 ||
 	    n_rcu_torture_boost_failure != 0 ||
 	    i > 1) {
 		pr_cont("%s", "!!! ");
-		atomic_inc_unchecked(&n_rcu_torture_error);
+		atomic_inc(&n_rcu_torture_error);
 		WARN_ON_ONCE(1);
 	}
 	pr_cont("Reader Pipe: ");
@@ -1314,7 +1303,7 @@ rcu_torture_stats_print(void)
 	pr_alert("%s%s ", torture_type, TORTURE_FLAG);
 	pr_cont("Free-Block Circulation: ");
 	for (i = 0; i < RCU_TORTURE_PIPE_LEN + 1; i++) {
-		pr_cont(" %d", atomic_read_unchecked(&rcu_torture_wcount[i]));
+		pr_cont(" %d", atomic_read(&rcu_torture_wcount[i]));
 	}
 	pr_cont("\n");
 
@@ -1333,7 +1322,7 @@ rcu_torture_stats_print(void)
 			 rcu_torture_writer_state,
 			 gpnum, completed, flags);
 		show_rcu_gp_kthreads();
-		rcutorture_trace_dump();
+		rcu_ftrace_dump(DUMP_ALL);
 	}
 	rtcv_snap = rcu_torture_current_version;
 }
@@ -1489,7 +1478,9 @@ static int rcu_torture_barrier_cbs(void *arg)
 		 * The above smp_load_acquire() ensures barrier_phase load
 		 * is ordered before the folloiwng ->call().
 		 */
+		local_irq_disable(); /* Just to test no-irq call_rcu(). */
 		cur_ops->call(&rcu, rcu_torture_barrier_cbf);
+		local_irq_enable();
 		if (atomic_dec_and_test(&barrier_cbs_count))
 			wake_up(&barrier_wq);
 	} while (!torture_must_stop());
@@ -1596,7 +1587,7 @@ static int rcutorture_cpu_notify(struct notifier_block *self,
 {
 	long cpu = (long)hcpu;
 
-	switch (action) {
+	switch (action & ~CPU_TASKS_FROZEN) {
 	case CPU_ONLINE:
 	case CPU_DOWN_FAILED:
 		(void)rcutorture_booster_init(cpu);
@@ -1669,7 +1660,7 @@ rcu_torture_cleanup(void)
 
 	rcu_torture_stats_print();  /* -After- the stats thread is stopped! */
 
-	if (atomic_read_unchecked(&n_rcu_torture_error) || n_rcu_torture_barrier_error)
+	if (atomic_read(&n_rcu_torture_error) || n_rcu_torture_barrier_error)
 		rcu_torture_print_module_parms(cur_ops, "End of test: FAILURE");
 	else if (torture_onoff_failures())
 		rcu_torture_print_module_parms(cur_ops,
@@ -1794,18 +1785,18 @@ rcu_torture_init(void)
 
 	rcu_torture_current = NULL;
 	rcu_torture_current_version = 0;
-	atomic_set_unchecked(&n_rcu_torture_alloc, 0);
-	atomic_set_unchecked(&n_rcu_torture_alloc_fail, 0);
-	atomic_set_unchecked(&n_rcu_torture_free, 0);
-	atomic_set_unchecked(&n_rcu_torture_mberror, 0);
-	atomic_set_unchecked(&n_rcu_torture_error, 0);
+	atomic_set(&n_rcu_torture_alloc, 0);
+	atomic_set(&n_rcu_torture_alloc_fail, 0);
+	atomic_set(&n_rcu_torture_free, 0);
+	atomic_set(&n_rcu_torture_mberror, 0);
+	atomic_set(&n_rcu_torture_error, 0);
 	n_rcu_torture_barrier_error = 0;
 	n_rcu_torture_boost_ktrerror = 0;
 	n_rcu_torture_boost_rterror = 0;
 	n_rcu_torture_boost_failure = 0;
 	n_rcu_torture_boosts = 0;
 	for (i = 0; i < RCU_TORTURE_PIPE_LEN + 1; i++)
-		atomic_set_unchecked(&rcu_torture_wcount[i], 0);
+		atomic_set(&rcu_torture_wcount[i], 0);
 	for_each_possible_cpu(cpu) {
 		for (i = 0; i < RCU_TORTURE_PIPE_LEN + 1; i++) {
 			per_cpu(rcu_torture_count, cpu)[i] = 0;

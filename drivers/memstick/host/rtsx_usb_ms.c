@@ -706,8 +706,7 @@ poll_again:
 		if (host->eject)
 			break;
 
-		if (msleep_interruptible(1000))
-			flush_signals(current);
+		schedule_timeout_idle(HZ);
 	}
 
 	complete(&host->detect_ms_exit);

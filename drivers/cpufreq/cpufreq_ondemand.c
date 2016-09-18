@@ -207,9 +207,10 @@ static unsigned int od_dbs_timer(struct cpufreq_policy *policy)
 /************************** sysfs interface ************************/
 static struct dbs_governor od_dbs_gov;
 
-static ssize_t store_io_is_busy(struct dbs_data *dbs_data, const char *buf,
-		size_t count)
+static ssize_t store_io_is_busy(struct gov_attr_set *attr_set, const char *buf,
+				size_t count)
 {
+	struct dbs_data *dbs_data = to_dbs_data(attr_set);
 	unsigned int input;
 	int ret;
 
@@ -224,9 +225,10 @@ static ssize_t store_io_is_busy(struct dbs_data *dbs_data, const char *buf,
 	return count;
 }
 
-static ssize_t store_up_threshold(struct dbs_data *dbs_data, const char *buf,
-		size_t count)
+static ssize_t store_up_threshold(struct gov_attr_set *attr_set,
+				  const char *buf, size_t count)
 {
+	struct dbs_data *dbs_data = to_dbs_data(attr_set);
 	unsigned int input;
 	int ret;
 	ret = sscanf(buf, "%u", &input);
@@ -240,9 +242,10 @@ static ssize_t store_up_threshold(struct dbs_data *dbs_data, const char *buf,
 	return count;
 }
 
-static ssize_t store_sampling_down_factor(struct dbs_data *dbs_data,
-		const char *buf, size_t count)
+static ssize_t store_sampling_down_factor(struct gov_attr_set *attr_set,
+					  const char *buf, size_t count)
 {
+	struct dbs_data *dbs_data = to_dbs_data(attr_set);
 	struct policy_dbs_info *policy_dbs;
 	unsigned int input;
 	int ret;
@@ -254,7 +257,7 @@ static ssize_t store_sampling_down_factor(struct dbs_data *dbs_data,
 	dbs_data->sampling_down_factor = input;
 
 	/* Reset down sampling multiplier in case it was active */
-	list_for_each_entry(policy_dbs, &dbs_data->policy_dbs_list, list) {
+	list_for_each_entry(policy_dbs, &attr_set->policy_list, list) {
 		/*
 		 * Doing this without locking might lead to using different
 		 * rate_mult values in od_update() and od_dbs_timer().
@@ -267,9 +270,10 @@ static ssize_t store_sampling_down_factor(struct dbs_data *dbs_data,
 	return count;
 }
 
-static ssize_t store_ignore_nice_load(struct dbs_data *dbs_data,
-		const char *buf, size_t count)
+static ssize_t store_ignore_nice_load(struct gov_attr_set *attr_set,
+				      const char *buf, size_t count)
 {
+	struct dbs_data *dbs_data = to_dbs_data(attr_set);
 	unsigned int input;
 	int ret;
 
@@ -291,9 +295,10 @@ static ssize_t store_ignore_nice_load(struct dbs_data *dbs_data,
 	return count;
 }
 
-static ssize_t store_powersave_bias(struct dbs_data *dbs_data, const char *buf,
-		size_t count)
+static ssize_t store_powersave_bias(struct gov_attr_set *attr_set,
+				    const char *buf, size_t count)
 {
+	struct dbs_data *dbs_data = to_dbs_data(attr_set);
 	struct od_dbs_tuners *od_tuners = dbs_data->tuners;
 	struct policy_dbs_info *policy_dbs;
 	unsigned int input;
@@ -308,7 +313,7 @@ static ssize_t store_powersave_bias(struct dbs_data *dbs_data, const char *buf,
 
 	od_tuners->powersave_bias = input;
 
-	list_for_each_entry(policy_dbs, &dbs_data->policy_dbs_list, list)
+	list_for_each_entry(policy_dbs, &attr_set->policy_list, list)
 		ondemand_powersave_bias_init(policy_dbs->policy);
 
 	return count;
@@ -410,7 +415,7 @@ static void od_start(struct cpufreq_policy *policy)
 	ondemand_powersave_bias_init(policy);
 }
 
-static struct od_ops od_ops __read_only = {
+static struct od_ops od_ops = {
 	.powersave_bias_target = generic_powersave_bias_target,
 };
 
@@ -471,18 +476,14 @@ void od_register_powersave_bias_handler(unsigned int (*f)
 		(struct cpufreq_policy *, unsigned int, unsigned int),
 		unsigned int powersave_bias)
 {
-	pax_open_kernel();
-	const_cast(od_ops.powersave_bias_target) = f;
-	pax_close_kernel();
+	od_ops.powersave_bias_target = f;
 	od_set_powersave_bias(powersave_bias);
 }
 EXPORT_SYMBOL_GPL(od_register_powersave_bias_handler);
 
 void od_unregister_powersave_bias_handler(void)
 {
-	pax_open_kernel();
-	const_cast(od_ops.powersave_bias_target) = generic_powersave_bias_target;
-	pax_close_kernel();
+	od_ops.powersave_bias_target = generic_powersave_bias_target;
 	od_set_powersave_bias(0);
 }
 EXPORT_SYMBOL_GPL(od_unregister_powersave_bias_handler);

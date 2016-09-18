@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2004-2015 Emulex.  All rights reserved.           *
+ * Copyright (C) 2004-2016 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
  * www.emulex.com                                                  *
  * Portions Copyright (C) 2004-2005 Christoph Hellwig              *
@@ -430,7 +430,7 @@ struct lpfc_vport {
 	struct dentry *debug_nodelist;
 	struct dentry *vport_debugfs_root;
 	struct lpfc_debugfs_trc *disc_trc;
-	atomic_unchecked_t disc_trc_cnt;
+	atomic_t disc_trc_cnt;
 #endif
 	uint8_t stat_data_enabled;
 	uint8_t stat_data_blocked;
@@ -694,6 +694,7 @@ struct lpfc_hba {
 	uint8_t  wwnn[8];
 	uint8_t  wwpn[8];
 	uint32_t RandomData[7];
+	uint32_t fcp_embed_io;
 
 	/* HBA Config Parameters */
 	uint32_t cfg_ack0;
@@ -757,7 +758,6 @@ struct lpfc_hba {
 	uint32_t cfg_fdmi_on;
 #define LPFC_FDMI_NO_SUPPORT	0	/* FDMI not supported */
 #define LPFC_FDMI_SUPPORT	1	/* FDMI supported? */
-#define LPFC_FDMI_SMART_SAN	2	/* SmartSAN supported */
 	uint32_t cfg_enable_SmartSAN;
 	lpfc_vpd_t vpd;		/* vital product data */
 
@@ -891,8 +891,8 @@ struct lpfc_hba {
 	struct timer_list fabric_block_timer;
 	unsigned long bit_flags;
 #define	FABRIC_COMANDS_BLOCKED	0
-	atomic_unchecked_t num_rsrc_err;
-	atomic_unchecked_t num_cmd_success;
+	atomic_t num_rsrc_err;
+	atomic_t num_cmd_success;
 	unsigned long last_rsrc_error_time;
 	unsigned long last_ramp_down_time;
 #ifdef CONFIG_SCSI_LPFC_DEBUG_FS
@@ -927,7 +927,7 @@ struct lpfc_hba {
 
 	struct dentry *debug_slow_ring_trc;
 	struct lpfc_debugfs_trc *slow_ring_trc;
-	atomic_unchecked_t slow_ring_trc_cnt;
+	atomic_t slow_ring_trc_cnt;
 	/* iDiag debugfs sub-directory */
 	struct dentry *idiag_root;
 	struct dentry *idiag_pci_cfg;

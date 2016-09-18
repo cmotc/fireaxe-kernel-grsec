@@ -39,10 +39,10 @@
 
 #include <linux/string.h>
 
-asmlinkage void sha512_transform_ssse3(struct sha512_state *digest, const u8 *data,
-				       int rounds);
+asmlinkage void sha512_transform_ssse3(u64 *digest, const char *data,
+				       u64 rounds);
 
-typedef void (sha512_transform_fn)(struct sha512_state *digest, const u8 *data, int rounds);
+typedef void (sha512_transform_fn)(u64 *digest, const char *data, u64 rounds);
 
 static int sha512_update(struct shash_desc *desc, const u8 *data,
 		       unsigned int len, sha512_transform_fn *sha512_xform)
@@ -57,7 +57,8 @@ static int sha512_update(struct shash_desc *desc, const u8 *data,
 	BUILD_BUG_ON(offsetof(struct sha512_state, state) != 0);
 
 	kernel_fpu_begin();
-	sha512_base_do_update(desc, data, len, sha512_xform);
+	sha512_base_do_update(desc, data, len,
+			      (sha512_block_fn *)sha512_xform);
 	kernel_fpu_end();
 
 	return 0;
@@ -71,8 +72,9 @@ static int sha512_finup(struct shash_desc *desc, const u8 *data,
 
 	kernel_fpu_begin();
 	if (len)
-		sha512_base_do_update(desc, data, len, sha512_xform);
-	sha512_base_do_finalize(desc, sha512_xform);
+		sha512_base_do_update(desc, data, len,
+				      (sha512_block_fn *)sha512_xform);
+	sha512_base_do_finalize(desc, (sha512_block_fn *)sha512_xform);
 	kernel_fpu_end();
 
 	return sha512_base_finish(desc, out);
@@ -144,12 +146,12 @@ static void unregister_sha512_ssse3(void)
 }
 
 #ifdef CONFIG_AS_AVX
-asmlinkage void sha512_transform_avx(struct sha512_state *digest, const u8 *data,
-				     int rounds);
+asmlinkage void sha512_transform_avx(u64 *digest, const char *data,
+				     u64 rounds);
 static bool avx_usable(void)
 {
 	if (!cpu_has_xfeatures(XFEATURE_MASK_SSE | XFEATURE_MASK_YMM, NULL)) {
-		if (cpu_has_avx)
+		if (boot_cpu_has(X86_FEATURE_AVX))
 			pr_info("AVX detected but unusable.\n");
 		return false;
 	}
@@ -227,8 +229,8 @@ static inline void unregister_sha512_avx(void) { }
 #endif
 
 #if defined(CONFIG_AS_AVX2) && defined(CONFIG_AS_AVX)
-asmlinkage void sha512_transform_rorx(struct sha512_state *digest, const u8 *data,
-				      int rounds);
+asmlinkage void sha512_transform_rorx(u64 *digest, const char *data,
+				      u64 rounds);
 
 static int sha512_avx2_update(struct shash_desc *desc, const u8 *data,
 		       unsigned int len)

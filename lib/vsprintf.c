@@ -16,9 +16,6 @@
  * - scnprintf and vscnprintf
  */
 
-#ifdef CONFIG_GRKERNSEC_HIDESYM
-#define __INCLUDED_BY_HIDESYM 1
-#endif
 #include <stdarg.h>
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
@@ -33,6 +30,7 @@
 #include <linux/ioport.h>
 #include <linux/dcache.h>
 #include <linux/cred.h>
+#include <linux/uuid.h>
 #include <net/addrconf.h>
 #ifdef CONFIG_BLOCK
 #include <linux/blkdev.h>
@@ -682,7 +680,7 @@ char *symbol_string(char *buf, char *end, void *ptr,
 #ifdef CONFIG_KALLSYMS
 	if (*fmt == 'B')
 		sprint_backtrace(sym, value);
-	else if (*fmt != 'f' && *fmt != 's' && *fmt != 'X')
+	else if (*fmt != 'f' && *fmt != 's')
 		sprint_symbol(sym, value);
 	else
 		sprint_symbol_no_offset(sym, value);
@@ -1307,19 +1305,17 @@ static noinline_for_stack
 char *uuid_string(char *buf, char *end, const u8 *addr,
 		  struct printf_spec spec, const char *fmt)
 {
-	char uuid[sizeof("xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")];
+	char uuid[UUID_STRING_LEN + 1];
 	char *p = uuid;
 	int i;
-	static const u8 be[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
-	static const u8 le[16] = {3,2,1,0,5,4,7,6,8,9,10,11,12,13,14,15};
-	const u8 *index = be;
+	const u8 *index = uuid_be_index;
 	bool uc = false;
 
 	switch (*(++fmt)) {
 	case 'L':
 		uc = true;		/* fall-through */
 	case 'l':
-		index = le;
+		index = uuid_le_index;
 		break;
 	case 'B':
 		uc = true;
@@ -1327,7 +1323,10 @@ char *uuid_string(char *buf, char *end, const u8 *addr,
 	}
 
 	for (i = 0; i < 16; i++) {
-		p = hex_byte_pack(p, addr[index[i]]);
+		if (uc)
+			p = hex_byte_pack_upper(p, addr[index[i]]);
+		else
+			p = hex_byte_pack(p, addr[index[i]]);
 		switch (i) {
 		case 3:
 		case 5:
@@ -1339,13 +1338,6 @@ char *uuid_string(char *buf, char *end, const u8 *addr,
 	}
 
 	*p = 0;
-
-	if (uc) {
-		p = uuid;
-		do {
-			*p = toupper(*p);
-		} while (*(++p));
-	}
 
 	return string(buf, end, uuid, spec);
 }
@@ -1478,11 +1470,7 @@ char *flags_string(char *buf, char *end, void *flags_ptr, const char *fmt)
 	return format_flags(buf, end, flags, names);
 }
 
-#ifdef CONFIG_GRKERNSEC_HIDESYM
-int kptr_restrict __read_only = 2;
-#else
-int kptr_restrict __read_only;
-#endif
+int kptr_restrict __read_mostly;
 
 /*
  * Show a '%p' thing.  A kernel extension is that the '%p' is followed
@@ -1493,10 +1481,8 @@ int kptr_restrict __read_only;
  *
  * - 'F' For symbolic function descriptor pointers with offset
  * - 'f' For simple symbolic function names without offset
- * - 'X' For simple symbolic function names without offset approved for use with GRKERNSEC_HIDESYM
  * - 'S' For symbolic direct pointers with offset
  * - 's' For symbolic direct pointers without offset
- * - 'A' For symbolic direct pointers with offset approved for use with GRKERNSEC_HIDESYM
  * - '[FfSs]R' as above with __builtin_extract_return_addr() translation
  * - 'B' For backtraced symbolic direct pointers with offset
  * - 'R' For decoded struct resource, e.g., [mem 0x0-0x1f 64bit pref]
@@ -1592,12 +1578,12 @@ char *pointer(const char *fmt, char *buf, char *end, void *ptr,
 
 	if (!ptr && *fmt != 'K') {
 		/*
-		 * Print (nil) with the same width as a pointer so it makes
+		 * Print (null) with the same width as a pointer so it makes
 		 * tabular output look nice.
 		 */
 		if (spec.field_width == -1)
 			spec.field_width = default_width;
-		return string(buf, end, "(nil)", spec);
+		return string(buf, end, "(null)", spec);
 	}
 
 	switch (*fmt) {
@@ -1607,14 +1593,6 @@ char *pointer(const char *fmt, char *buf, char *end, void *ptr,
 		/* Fallthrough */
 	case 'S':
 	case 's':
-#ifdef CONFIG_GRKERNSEC_HIDESYM
-		break;
-#else
-		return symbol_string(buf, end, ptr, spec, fmt);
-#endif
-	case 'X':
-		ptr = dereference_function_descriptor(ptr);
-	case 'A':
 	case 'B':
 		return symbol_string(buf, end, ptr, spec, fmt);
 	case 'R':
@@ -1679,8 +1657,6 @@ char *pointer(const char *fmt, char *buf, char *end, void *ptr,
 			va_end(va);
 			return buf;
 		}
-	case 'P':
-		break;
 	case 'K':
 		switch (kptr_restrict) {
 		case 0:
@@ -1743,22 +1719,6 @@ char *pointer(const char *fmt, char *buf, char *end, void *ptr,
 	case 'G':
 		return flags_string(buf, end, ptr, fmt);
 	}
-
-#ifdef CONFIG_GRKERNSEC_HIDESYM
-	/* 'P' = approved pointers to copy to userland,
-	   as in the /proc/kallsyms case, as we make it display nothing
-	   for non-root users, and the real contents for root users
-	   'X' = approved simple symbols
-	   Also ignore 'K' pointers, since we force their NULLing for non-root users
-	   above
-	*/
-	if ((unsigned long)ptr > TASK_SIZE && *fmt != 'P' && *fmt != 'X' && *fmt != 'K' && is_usercopy_object(buf)) {
-		printk(KERN_ALERT "grsec: kernel infoleak detected!  Please report this log to spender@grsecurity.net.\n");
-		dump_stack();
-		ptr = NULL;
-	}
-#endif
-
 	spec.flags |= SMALL;
 	if (spec.field_width == -1) {
 		spec.field_width = default_width;
@@ -2459,11 +2419,11 @@ int bstr_printf(char *buf, size_t size, const char *fmt, const u32 *bin_buf)
 	typeof(type) value;						\
 	if (sizeof(type) == 8) {					\
 		args = PTR_ALIGN(args, sizeof(u32));			\
-		*(u32 *)&value = *(const u32 *)args;			\
-		*((u32 *)&value + 1) = *(const u32 *)(args + 4);	\
+		*(u32 *)&value = *(u32 *)args;				\
+		*((u32 *)&value + 1) = *(u32 *)(args + 4);		\
 	} else {							\
 		args = PTR_ALIGN(args, sizeof(type));			\
-		value = *(const typeof(type) *)args;			\
+		value = *(typeof(type) *)args;				\
 	}								\
 	args += sizeof(type);						\
 	value;								\
@@ -2526,7 +2486,7 @@ int bstr_printf(char *buf, size_t size, const char *fmt, const u32 *bin_buf)
 		case FORMAT_TYPE_STR: {
 			const char *str_arg = args;
 			args += strlen(str_arg) + 1;
-			str = string(str, end, str_arg, spec);
+			str = string(str, end, (char *)str_arg, spec);
 			break;
 		}
 

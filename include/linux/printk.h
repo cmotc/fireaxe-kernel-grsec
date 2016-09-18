@@ -43,7 +43,7 @@ static inline const char *printk_skip_level(const char *buffer)
 #define CONSOLE_LOGLEVEL_DEBUG	10 /* issue debug messages */
 #define CONSOLE_LOGLEVEL_MOTORMOUTH 15	/* You can't shut this one up */
 
-extern int console_printk[4];
+extern int console_printk[];
 
 #define console_loglevel (console_printk[0])
 #define default_message_loglevel (console_printk[1])
@@ -122,8 +122,19 @@ static inline __printf(1, 2) __cold
 void early_printk(const char *s, ...) { }
 #endif
 
-typedef __printf(1, 0) int (*printk_func_t)(const char *fmt, va_list args);
-extern int kptr_restrict;
+#ifdef CONFIG_PRINTK_NMI
+extern void printk_nmi_init(void);
+extern void printk_nmi_enter(void);
+extern void printk_nmi_exit(void);
+extern void printk_nmi_flush(void);
+extern void printk_nmi_flush_on_panic(void);
+#else
+static inline void printk_nmi_init(void) { }
+static inline void printk_nmi_enter(void) { }
+static inline void printk_nmi_exit(void) { }
+static inline void printk_nmi_flush(void) { }
+static inline void printk_nmi_flush_on_panic(void) { }
+#endif /* PRINTK_NMI */
 
 #ifdef CONFIG_PRINTK
 asmlinkage __printf(5, 0)
@@ -159,6 +170,7 @@ extern bool printk_timed_ratelimit(unsigned long *caller_jiffies,
 
 extern int printk_delay_msec;
 extern int dmesg_restrict;
+extern int kptr_restrict;
 
 extern void wake_up_klogd(void);
 

@@ -2,6 +2,7 @@
 #define _ASM_X86_SEGMENT_H
 
 #include <linux/const.h>
+#include <asm/alternative.h>
 
 /*
  * Constructor for a conventional segment GDT (or LDT) entry.
@@ -82,20 +83,14 @@
  *  26 - ESPFIX small SS
  *  27 - per-cpu			[ offset to per-cpu data area ]
  *  28 - stack_canary-20		[ for stack protector ]		<=== cacheline #8
- *  29 - PCI BIOS CS
- *  30 - PCI BIOS DS
+ *  29 - unused
+ *  30 - unused
  *  31 - TSS for double fault handler
  */
-#define GDT_ENTRY_KERNEXEC_EFI_CS	(1)
-#define GDT_ENTRY_KERNEXEC_EFI_DS	(2)
-#define __KERNEXEC_EFI_CS	(GDT_ENTRY_KERNEXEC_EFI_CS*8)
-#define __KERNEXEC_EFI_DS	(GDT_ENTRY_KERNEXEC_EFI_DS*8)
-
 #define GDT_ENTRY_TLS_MIN		6
 #define GDT_ENTRY_TLS_MAX 		(GDT_ENTRY_TLS_MIN + GDT_ENTRY_TLS_ENTRIES - 1)
 
 #define GDT_ENTRY_KERNEL_CS		12
-#define GDT_ENTRY_KERNEXEC_KERNEL_CS	4
 #define GDT_ENTRY_KERNEL_DS		13
 #define GDT_ENTRY_DEFAULT_USER_CS	14
 #define GDT_ENTRY_DEFAULT_USER_DS	15
@@ -112,12 +107,6 @@
 #define GDT_ENTRY_PERCPU		27
 #define GDT_ENTRY_STACK_CANARY		28
 
-#define GDT_ENTRY_PCIBIOS_CS		29
-#define __PCIBIOS_DS (GDT_ENTRY_PCIBIOS_DS * 8)
-
-#define GDT_ENTRY_PCIBIOS_DS		30
-#define __PCIBIOS_CS (GDT_ENTRY_PCIBIOS_CS * 8)
-
 #define GDT_ENTRY_DOUBLEFAULT_TSS	31
 
 /*
@@ -130,7 +119,6 @@
  */
 
 #define __KERNEL_CS			(GDT_ENTRY_KERNEL_CS*8)
-#define __KERNEXEC_KERNEL_CS		(GDT_ENTRY_KERNEXEC_KERNEL_CS*8)
 #define __KERNEL_DS			(GDT_ENTRY_KERNEL_DS*8)
 #define __USER_DS			(GDT_ENTRY_DEFAULT_USER_DS*8 + 3)
 #define __USER_CS			(GDT_ENTRY_DEFAULT_USER_CS*8 + 3)
@@ -142,7 +130,7 @@
 #define PNP_CS16			(GDT_ENTRY_PNPBIOS_CS16*8)
 
 /* "Is this PNP code selector (PNP_CS32 or PNP_CS16)?" */
-#define SEGMENT_IS_PNP_CODE(x)		(((x) & 0xFFFCU) == PNP_CS32 || ((x) & 0xFFFCU) == PNP_CS16)
+#define SEGMENT_IS_PNP_CODE(x)		(((x) & 0xf4) == PNP_CS32)
 
 /* data segment for BIOS: */
 #define PNP_DS				(GDT_ENTRY_PNPBIOS_DS*8)
@@ -189,8 +177,6 @@
 #define GDT_ENTRY_DEFAULT_USER_DS	5
 #define GDT_ENTRY_DEFAULT_USER_CS	6
 
-#define GDT_ENTRY_KERNEXEC_KERNEL_CS	7
-
 /* Needs two entries */
 #define GDT_ENTRY_TSS			8
 /* Needs two entries */
@@ -202,12 +188,10 @@
 /* Abused to load per CPU data from limit */
 #define GDT_ENTRY_PER_CPU		15
 
-#define GDT_ENTRY_UDEREF_KERNEL_DS	16
-
 /*
  * Number of entries in the GDT table:
  */
-#define GDT_ENTRIES			17
+#define GDT_ENTRIES			16
 
 /*
  * Segment selector values corresponding to the above entries:
@@ -217,21 +201,12 @@
  */
 #define __KERNEL32_CS			(GDT_ENTRY_KERNEL32_CS*8)
 #define __KERNEL_CS			(GDT_ENTRY_KERNEL_CS*8)
-#define __KERNEXEC_KERNEL_CS		(GDT_ENTRY_KERNEXEC_KERNEL_CS*8)
 #define __KERNEL_DS			(GDT_ENTRY_KERNEL_DS*8)
-#define __UDEREF_KERNEL_DS		(GDT_ENTRY_UDEREF_KERNEL_DS*8)
 #define __USER32_CS			(GDT_ENTRY_DEFAULT_USER32_CS*8 + 3)
 #define __USER_DS			(GDT_ENTRY_DEFAULT_USER_DS*8 + 3)
 #define __USER32_DS			__USER_DS
 #define __USER_CS			(GDT_ENTRY_DEFAULT_USER_CS*8 + 3)
 #define __PER_CPU_SEG			(GDT_ENTRY_PER_CPU*8 + 3)
-
-/* TLS indexes for 64-bit - hardcoded in arch_prctl(): */
-#define FS_TLS				0
-#define GS_TLS				1
-
-#define GS_TLS_SEL			((GDT_ENTRY_TLS_MIN+GS_TLS)*8 + 3)
-#define FS_TLS_SEL			((GDT_ENTRY_TLS_MIN+FS_TLS)*8 + 3)
 
 #endif
 
@@ -268,10 +243,13 @@ extern const char early_idt_handler_array[NUM_EXCEPTION_VECTORS][EARLY_IDT_HANDL
 #endif
 
 /*
- * Load a segment. Fall back on loading the zero
- * segment if something goes wrong..
+ * Load a segment. Fall back on loading the zero segment if something goes
+ * wrong.  This variant assumes that loading zero fully clears the segment.
+ * This is always the case on Intel CPUs and, even on 64-bit AMD CPUs, any
+ * failure to fully clear the cached descriptor is only observable for
+ * FS and GS.
  */
-#define loadsegment(seg, value)						\
+#define __loadsegment_simple(seg, value)				\
 do {									\
 	unsigned short __val = (value);					\
 									\
@@ -287,6 +265,38 @@ do {									\
 									\
 		     : "+r" (__val) : : "memory");			\
 } while (0)
+
+#define __loadsegment_ss(value) __loadsegment_simple(ss, (value))
+#define __loadsegment_ds(value) __loadsegment_simple(ds, (value))
+#define __loadsegment_es(value) __loadsegment_simple(es, (value))
+
+#ifdef CONFIG_X86_32
+
+/*
+ * On 32-bit systems, the hidden parts of FS and GS are unobservable if
+ * the selector is NULL, so there's no funny business here.
+ */
+#define __loadsegment_fs(value) __loadsegment_simple(fs, (value))
+#define __loadsegment_gs(value) __loadsegment_simple(gs, (value))
+
+#else
+
+static inline void __loadsegment_fs(unsigned short value)
+{
+	asm volatile("						\n"
+		     "1:	movw %0, %%fs			\n"
+		     "2:					\n"
+
+		     _ASM_EXTABLE_HANDLE(1b, 2b, ex_handler_clear_fs)
+
+		     : : "rm" (value) : "memory");
+}
+
+/* __loadsegment_gs is intentionally undefined.  Use load_gs_index instead. */
+
+#endif
+
+#define loadsegment(seg, value) __loadsegment_ ## seg (value)
 
 /*
  * Save a segment register away:

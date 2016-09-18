@@ -111,16 +111,11 @@ platform_init(struct nvkm_bios *bios, const char *name)
 	return ERR_PTR(ret);
 }
 
-static void platform_fini(void *data)
-{
-	kfree(data);
-}
-
 const struct nvbios_source
 nvbios_platform = {
 	.name = "PLATFORM",
 	.init = platform_init,
-	.fini = platform_fini,
+	.fini = (void(*)(void *))kfree,
 	.read = pcirom_read,
 	.rw = true,
 };

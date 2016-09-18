@@ -1393,13 +1393,17 @@ static int reiserfs_remount(struct super_block *s, int *mount_flags, char *arg)
 	unsigned long safe_mask = 0;
 	unsigned int commit_max_age = (unsigned int)-1;
 	struct reiserfs_journal *journal = SB_JOURNAL(s);
-	char *new_opts = kstrdup(arg, GFP_KERNEL);
+	char *new_opts;
 	int err;
 	char *qf_names[REISERFS_MAXQUOTAS];
 	unsigned int qfmt = 0;
 #ifdef CONFIG_QUOTA
 	int i;
 #endif
+
+	new_opts = kstrdup(arg, GFP_KERNEL);
+	if (arg && !new_opts)
+		return -ENOMEM;
 
 	sync_filesystem(s);
 	reiserfs_write_lock(s);
@@ -1546,7 +1550,8 @@ static int reiserfs_remount(struct super_block *s, int *mount_flags, char *arg)
 	}
 
 out_ok_unlocked:
-	replace_mount_options(s, new_opts);
+	if (new_opts)
+		replace_mount_options(s, new_opts);
 	return 0;
 
 out_err_unlock:
@@ -1872,10 +1877,6 @@ static int reiserfs_fill_super(struct super_block *s, void *data, int silent)
 	sbi->s_mount_opt |= (1 << REISERFS_SMALLTAIL);
 	sbi->s_mount_opt |= (1 << REISERFS_ERROR_RO);
 	sbi->s_mount_opt |= (1 << REISERFS_BARRIER_FLUSH);
-#ifdef CONFIG_REISERFS_FS_XATTR
-	/* turn on user xattrs by default */
-	sbi->s_mount_opt |= (1 << REISERFS_XATTRS_USER);
-#endif
 	/* no preallocation minimum, be smart in reiserfs_file_write instead */
 	sbi->s_alloc_options.preallocmin = 0;
 	/* Preallocate by 16 blocks (17-1) at once */

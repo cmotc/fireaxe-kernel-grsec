@@ -555,7 +555,7 @@ static int pkg_temp_thermal_cpu_callback(struct notifier_block *nfb,
 {
 	unsigned int cpu = (unsigned long) hcpu;
 
-	switch (action) {
+	switch (action & ~CPU_TASKS_FROZEN) {
 	case CPU_ONLINE:
 	case CPU_DOWN_FAILED:
 		get_core_online(cpu);
@@ -567,7 +567,7 @@ static int pkg_temp_thermal_cpu_callback(struct notifier_block *nfb,
 	return NOTIFY_OK;
 }
 
-static struct notifier_block pkg_temp_thermal_notifier = {
+static struct notifier_block pkg_temp_thermal_notifier __refdata = {
 	.notifier_call = pkg_temp_thermal_cpu_callback,
 };
 

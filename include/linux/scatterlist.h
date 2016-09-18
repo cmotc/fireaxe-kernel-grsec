@@ -1,7 +1,6 @@
 #ifndef _LINUX_SCATTERLIST_H
 #define _LINUX_SCATTERLIST_H
 
-#include <linux/sched.h>
 #include <linux/string.h>
 #include <linux/types.h>
 #include <linux/bug.h>
@@ -137,17 +136,10 @@ static inline struct page *sg_page(struct scatterlist *sg)
 static inline void sg_set_buf(struct scatterlist *sg, const void *buf,
 			      unsigned int buflen)
 {
-	const void *realbuf = buf;
-
-#ifdef CONFIG_GRKERNSEC_KSTACKOVERFLOW
-	if (object_starts_on_stack(buf))
-		realbuf = buf - current->stack + current->lowmem_stack;
-#endif
-
 #ifdef CONFIG_DEBUG_SG
-	BUG_ON(!virt_addr_valid(realbuf));
+	BUG_ON(!virt_addr_valid(buf));
 #endif
-	sg_set_page(sg, virt_to_page(realbuf), buflen, offset_in_page(realbuf));
+	sg_set_page(sg, virt_to_page(buf), buflen, offset_in_page(buf));
 }
 
 /*
@@ -292,6 +284,31 @@ size_t sg_pcopy_to_buffer(struct scatterlist *sgl, unsigned int nents,
  * a list larger than this is required then chaining will be utilized.
  */
 #define SG_MAX_SINGLE_ALLOC		(PAGE_SIZE / sizeof(struct scatterlist))
+
+/*
+ * The maximum number of SG segments that we will put inside a
+ * scatterlist (unless chaining is used). Should ideally fit inside a
+ * single page, to avoid a higher order allocation.  We could define this
+ * to SG_MAX_SINGLE_ALLOC to pack correctly at the highest order.  The
+ * minimum value is 32
+ */
+#define SG_CHUNK_SIZE	128
+
+/*
+ * Like SG_CHUNK_SIZE, but for archs that have sg chaining. This limit
+ * is totally arbitrary, a setting of 2048 will get you at least 8mb ios.
+ */
+#ifdef CONFIG_ARCH_HAS_SG_CHAIN
+#define SG_MAX_SEGMENTS	2048
+#else
+#define SG_MAX_SEGMENTS	SG_CHUNK_SIZE
+#endif
+
+#ifdef CONFIG_SG_POOL
+void sg_free_table_chained(struct sg_table *table, bool first_chunk);
+int sg_alloc_table_chained(struct sg_table *table, int nents,
+			   struct scatterlist *first_chunk);
+#endif
 
 /*
  * sg page iterator

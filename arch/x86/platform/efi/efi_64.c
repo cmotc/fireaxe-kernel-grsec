@@ -55,14 +55,12 @@ struct efi_scratch efi_scratch;
 static void __init early_code_mapping_set_exec(int executable)
 {
 	efi_memory_desc_t *md;
-	void *p;
 
 	if (!(__supported_pte_mask & _PAGE_NX))
 		return;
 
 	/* Make EFI service code area executable */
-	for (p = memmap.map; p < memmap.map_end; p += memmap.desc_size) {
-		md = p;
+	for_each_efi_memory_desc(md) {
 		if (md->type == EFI_RUNTIME_SERVICES_CODE ||
 		    md->type == EFI_BOOT_SERVICES_CODE)
 			efi_set_executable(md, executable);
@@ -93,11 +91,6 @@ pgd_t * __init efi_call_phys_prolog(void)
 		vaddress = (unsigned long)__va(pgd * PGDIR_SIZE);
 		set_pgd(pgd_offset_k(pgd * PGDIR_SIZE), *pgd_offset_k(vaddress));
 	}
-
-#ifdef CONFIG_PAX_PER_CPU_PGD
-	load_cr3(swapper_pg_dir);
-#endif
-
 out:
 	__flush_tlb_all();
 
@@ -125,10 +118,6 @@ void __init efi_call_phys_epilog(pgd_t *save_pgd)
 
 	kfree(save_pgd);
 
-#ifdef CONFIG_PAX_PER_CPU_PGD
-	load_cr3(get_cpu_pgd(smp_processor_id(), kernel));
-#endif
-
 	__flush_tlb_all();
 	early_code_mapping_set_exec(0);
 }
@@ -150,7 +139,7 @@ int __init efi_alloc_page_tables(void)
 	if (efi_enabled(EFI_OLD_MEMMAP))
 		return 0;
 
-	gfp_mask = GFP_KERNEL | __GFP_NOTRACK | __GFP_REPEAT | __GFP_ZERO;
+	gfp_mask = GFP_KERNEL | __GFP_NOTRACK | __GFP_ZERO;
 	efi_pgd = (pgd_t *)__get_free_page(gfp_mask);
 	if (!efi_pgd)
 		return -ENOMEM;
@@ -229,23 +218,8 @@ int __init efi_setup_page_tables(unsigned long pa_memmap, unsigned num_pages)
 	unsigned npages;
 	pgd_t *pgd;
 
-	if (efi_enabled(EFI_OLD_MEMMAP)) {
-		/* PaX: We need to disable the NX bit in the PGD, otherwise we won't be
-		 * able to execute the EFI services.
-		 */
-		if (__supported_pte_mask & _PAGE_NX) {
-			unsigned long addr = (unsigned long) __va(0);
-			pgd_t pe = __pgd(pgd_val(*pgd_offset_k(addr)) &  ~_PAGE_NX);
-
-			pr_alert("PAX: Disabling NX protection for low memory map. Try booting without \"efi=old_map\"\n");
-#ifdef CONFIG_PAX_PER_CPU_PGD
-			set_pgd(pgd_offset_cpu(0, kernel, addr), pe);
-#endif
-			set_pgd(pgd_offset_k(addr), pe);
-		}
-
+	if (efi_enabled(EFI_OLD_MEMMAP))
 		return 0;
-	}
 
 	efi_scratch.efi_pgt = (pgd_t *)__pa(efi_pgd);
 	pgd = efi_pgd;
@@ -277,7 +251,7 @@ int __init efi_setup_page_tables(unsigned long pa_memmap, unsigned num_pages)
 	 * Map all of RAM so that we can access arguments in the 1:1
 	 * mapping when making EFI runtime calls.
 	 */
-	for_each_efi_memory_desc(&memmap, md) {
+	for_each_efi_memory_desc(md) {
 		if (md->type != EFI_CONVENTIONAL_MEMORY &&
 		    md->type != EFI_LOADER_DATA &&
 		    md->type != EFI_LOADER_CODE)
@@ -422,7 +396,6 @@ void __init efi_runtime_update_mappings(void)
 	unsigned long pfn;
 	pgd_t *pgd = efi_pgd;
 	efi_memory_desc_t *md;
-	void *p;
 
 	if (efi_enabled(EFI_OLD_MEMMAP)) {
 		if (__supported_pte_mask & _PAGE_NX)
@@ -433,9 +406,8 @@ void __init efi_runtime_update_mappings(void)
 	if (!efi_enabled(EFI_NX_PE_DATA))
 		return;
 
-	for (p = memmap.map; p < memmap.map_end; p += memmap.desc_size) {
+	for_each_efi_memory_desc(md) {
 		unsigned long pf = 0;
-		md = p;
 
 		if (!(md->attribute & EFI_MEMORY_RUNTIME))
 			continue;

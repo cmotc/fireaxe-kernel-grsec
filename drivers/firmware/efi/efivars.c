@@ -583,7 +583,7 @@ efivar_create_sysfs_entry(struct efivar_entry *new_var)
 static int
 create_efivars_bin_attributes(void)
 {
-	bin_attribute_no_const *attr;
+	struct bin_attribute *attr;
 	int error;
 
 	/* new_var */
@@ -661,7 +661,7 @@ static void efivar_update_sysfs_entries(struct work_struct *work)
 			return;
 
 		err = efivar_init(efivar_update_sysfs_entry, entry,
-				  true, false, &efivar_sysfs_list);
+				  false, &efivar_sysfs_list);
 		if (!err)
 			break;
 
@@ -730,8 +730,7 @@ int efivars_sysfs_init(void)
 		return -ENOMEM;
 	}
 
-	efivar_init(efivars_sysfs_callback, NULL, false,
-		    true, &efivar_sysfs_list);
+	efivar_init(efivars_sysfs_callback, NULL, true, &efivar_sysfs_list);
 
 	error = create_efivars_bin_attributes();
 	if (error) {

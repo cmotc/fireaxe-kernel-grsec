@@ -91,7 +91,7 @@ static const struct file_operations reset_ops = {
 };
 #endif
 
-static const char * const hw_flag_names[] = {
+static const char *hw_flag_names[] = {
 #define FLAG(F)	[IEEE80211_HW_##F] = #F
 	FLAG(HAS_RATE_CONTROL),
 	FLAG(RX_INCLUDES_FCS),
@@ -127,6 +127,9 @@ static const char * const hw_flag_names[] = {
 	FLAG(BEACON_TX_STATUS),
 	FLAG(NEEDS_UNIQUE_STA_ADDR),
 	FLAG(SUPPORTS_REORDERING_BUFFER),
+	FLAG(USES_RSS),
+	FLAG(TX_AMSDU),
+	FLAG(TX_FRAG_LIST),
 #undef FLAG
 };
 

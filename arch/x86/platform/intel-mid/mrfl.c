@@ -94,7 +94,7 @@ static struct intel_mid_ops tangier_ops = {
 	.arch_setup = tangier_arch_setup,
 };
 
-const void *get_tangier_ops(void)
+void *get_tangier_ops(void)
 {
 	return &tangier_ops;
 }

@@ -34,16 +34,14 @@ static bool moving_pred(struct keybuf *buf, struct bkey *k)
 
 /* Moving GC - IO loop */
 
-static void moving_io_destructor(struct work_struct *work)
+static void moving_io_destructor(struct closure *cl)
 {
-	struct closure *cl = container_of(work, struct closure, work);
 	struct moving_io *io = container_of(cl, struct moving_io, cl);
 	kfree(io);
 }
 
-static void write_moving_finish(struct work_struct *work)
+static void write_moving_finish(struct closure *cl)
 {
-	struct closure *cl = container_of(work, struct closure, work);
 	struct moving_io *io = container_of(cl, struct moving_io, cl);
 	struct bio *bio = &io->bio.bio;
 	struct bio_vec *bv;
@@ -94,9 +92,8 @@ static void moving_init(struct moving_io *io)
 	bch_bio_map(bio, NULL);
 }
 
-static void write_moving(struct work_struct *work)
+static void write_moving(struct closure *cl)
 {
-	struct closure *cl = container_of(work, struct closure, work);
 	struct moving_io *io = container_of(cl, struct moving_io, cl);
 	struct data_insert_op *op = &io->op;
 
@@ -119,9 +116,8 @@ static void write_moving(struct work_struct *work)
 	continue_at(cl, write_moving_finish, op->wq);
 }
 
-static void read_moving_submit(struct work_struct *work)
+static void read_moving_submit(struct closure *cl)
 {
-	struct closure *cl = container_of(work, struct closure, work);
 	struct moving_io *io = container_of(cl, struct moving_io, cl);
 	struct bio *bio = &io->bio.bio;
 

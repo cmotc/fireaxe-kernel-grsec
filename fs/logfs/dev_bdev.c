@@ -33,8 +33,9 @@ static int sync_request(struct page *page, struct block_device *bdev, int rw)
 	return submit_bio_wait(rw, &bio);
 }
 
-static int bdev_readpage(struct super_block *sb, struct page *page)
+static int bdev_readpage(void *_sb, struct page *page)
 {
+	struct super_block *sb = _sb;
 	struct block_device *bdev = logfs_super(sb)->s_bdev;
 	int err;
 
@@ -48,11 +49,6 @@ static int bdev_readpage(struct super_block *sb, struct page *page)
 	}
 	unlock_page(page);
 	return err;
-}
-
-static int bdev_filler(struct file *file, struct page *page)
-{
-	return bdev_readpage((struct super_block *)file, page);
 }
 
 static DECLARE_WAIT_QUEUE_HEAD(wq);
@@ -250,7 +246,7 @@ static struct page *bdev_find_first_sb(struct super_block *sb, u64 *ofs)
 {
 	struct logfs_super *super = logfs_super(sb);
 	struct address_space *mapping = super->s_mapping_inode->i_mapping;
-	filler_t *filler = bdev_filler;
+	filler_t *filler = bdev_readpage;
 
 	*ofs = 0;
 	return read_cache_page(mapping, 0, filler, sb);
@@ -260,7 +256,7 @@ static struct page *bdev_find_last_sb(struct super_block *sb, u64 *ofs)
 {
 	struct logfs_super *super = logfs_super(sb);
 	struct address_space *mapping = super->s_mapping_inode->i_mapping;
-	filler_t *filler = bdev_filler;
+	filler_t *filler = bdev_readpage;
 	u64 pos = (super->s_bdev->bd_inode->i_size & ~0xfffULL) - 0x1000;
 	pgoff_t index = pos >> PAGE_SHIFT;
 
@@ -291,7 +287,6 @@ static const struct logfs_device_ops bd_devops = {
 	.find_last_sb	= bdev_find_last_sb,
 	.write_sb	= bdev_write_sb,
 	.readpage	= bdev_readpage,
-	.filler		= bdev_filler,
 	.writeseg	= bdev_writeseg,
 	.erase		= bdev_erase,
 	.can_write_buf	= bdev_can_write_buf,

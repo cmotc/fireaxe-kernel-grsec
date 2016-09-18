@@ -51,21 +51,26 @@ void pvclock_touch_watchdogs(void)
 	reset_hung_task_detector();
 }
 
-static atomic64_unchecked_t last_value = ATOMIC64_INIT(0);
+static atomic64_t last_value = ATOMIC64_INIT(0);
 
 void pvclock_resume(void)
 {
-	atomic64_set_unchecked(&last_value, 0);
+	atomic64_set(&last_value, 0);
 }
 
 u8 pvclock_read_flags(struct pvclock_vcpu_time_info *src)
 {
 	unsigned version;
-	cycle_t ret;
 	u8 flags;
 
 	do {
-		version = __pvclock_read_cycles(src, &ret, &flags);
+		version = src->version;
+		/* Make the latest version visible */
+		smp_rmb();
+
+		flags = src->flags;
+		/* Make sure that the version double-check is last. */
+		smp_rmb();
 	} while ((src->version & 1) || version != src->version);
 
 	return flags & valid_flags;
@@ -80,6 +85,8 @@ cycle_t pvclock_clocksource_read(struct pvclock_vcpu_time_info *src)
 
 	do {
 		version = __pvclock_read_cycles(src, &ret, &flags);
+		/* Make sure that the version double-check is last. */
+		smp_rmb();
 	} while ((src->version & 1) || version != src->version);
 
 	if (unlikely((flags & PVCLOCK_GUEST_STOPPED) != 0)) {
@@ -105,11 +112,11 @@ cycle_t pvclock_clocksource_read(struct pvclock_vcpu_time_info *src)
 	 * updating at the same time, and one of them could be slightly behind,
 	 * making the assumption that last_value always go forward fail to hold.
 	 */
-	last = atomic64_read_unchecked(&last_value);
+	last = atomic64_read(&last_value);
 	do {
 		if (ret < last)
 			return last;
-		last = atomic64_cmpxchg_unchecked(&last_value, last, ret);
+		last = atomic64_cmpxchg(&last_value, last, ret);
 	} while (unlikely(last != ret));
 
 	return ret;

@@ -105,13 +105,9 @@ static ssize_t read_from_oldmem(char *buf, size_t count,
 			nr_bytes = count;
 
 		/* If pfn is not ram, return zeros for sparse dump files */
-		if (pfn_is_ram(pfn) == 0) {
-			if (userbuf) {
-				if (clear_user((char __force_user *)buf, nr_bytes))
-					return -EFAULT;
-			} else
-				memset(buf, 0, nr_bytes);
-		} else {
+		if (pfn_is_ram(pfn) == 0)
+			memset(buf, 0, nr_bytes);
+		else {
 			tmp = copy_oldmem_page(pfn, buf, nr_bytes,
 						offset, userbuf);
 			if (tmp < 0)
@@ -174,7 +170,7 @@ int __weak remap_oldmem_pfn_range(struct vm_area_struct *vma,
 static int copy_to(void *target, void *src, size_t size, int userbuf)
 {
 	if (userbuf) {
-		if (copy_to_user((char __force_user *) target, src, size))
+		if (copy_to_user((char __user *) target, src, size))
 			return -EFAULT;
 	} else {
 		memcpy(target, src, size);
@@ -239,7 +235,7 @@ static ssize_t __read_vmcore(char *buffer, size_t buflen, loff_t *fpos,
 					    m->offset + m->size - *fpos,
 					    buflen);
 			start = m->paddr + *fpos - m->offset;
-			tmp = read_from_oldmem((char __force_kernel *)buffer, tsz, &start, userbuf);
+			tmp = read_from_oldmem(buffer, tsz, &start, userbuf);
 			if (tmp < 0)
 				return tmp;
 			buflen -= tsz;
@@ -259,7 +255,7 @@ static ssize_t __read_vmcore(char *buffer, size_t buflen, loff_t *fpos,
 static ssize_t read_vmcore(struct file *file, char __user *buffer,
 			   size_t buflen, loff_t *fpos)
 {
-	return __read_vmcore((__force_kernel char *) buffer, buflen, fpos, 1);
+	return __read_vmcore((__force char *) buffer, buflen, fpos, 1);
 }
 
 /*
@@ -1075,7 +1071,7 @@ static int __init parse_crash_elf32_headers(void)
 	/* Do some basic Verification. */
 	if (memcmp(ehdr.e_ident, ELFMAG, SELFMAG) != 0 ||
 		(ehdr.e_type != ET_CORE) ||
-		!elf_check_arch(&ehdr) ||
+		!vmcore_elf32_check_arch(&ehdr) ||
 		ehdr.e_ident[EI_CLASS] != ELFCLASS32||
 		ehdr.e_ident[EI_VERSION] != EV_CURRENT ||
 		ehdr.e_version != EV_CURRENT ||

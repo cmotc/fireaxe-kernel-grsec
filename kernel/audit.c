@@ -64,7 +64,6 @@
 #include <linux/security.h>
 #endif
 #include <linux/freezer.h>
-#include <linux/tty.h>
 #include <linux/pid_namespace.h>
 #include <net/netns/generic.h>
 
@@ -123,7 +122,7 @@ u32		audit_sig_sid = 0;
    3) suppressed due to audit_rate_limit
    4) suppressed due to audit_backlog_limit
 */
-static atomic_unchecked_t    audit_lost = ATOMIC_INIT(0);
+static atomic_t    audit_lost = ATOMIC_INIT(0);
 
 /* The netlink socket. */
 static struct sock *audit_sock;
@@ -257,7 +256,7 @@ void audit_log_lost(const char *message)
 	unsigned long		now;
 	int			print;
 
-	atomic_inc_unchecked(&audit_lost);
+	atomic_inc(&audit_lost);
 
 	print = (audit_failure == AUDIT_FAIL_PANIC || !audit_rate_limit);
 
@@ -274,7 +273,7 @@ void audit_log_lost(const char *message)
 	if (print) {
 		if (printk_ratelimit())
 			pr_warn("audit_lost=%u audit_rate_limit=%u audit_backlog_limit=%u\n",
-				atomic_read_unchecked(&audit_lost),
+				atomic_read(&audit_lost),
 				audit_rate_limit,
 				audit_backlog_limit);
 		audit_panic(message);
@@ -430,7 +429,6 @@ restart:
 					attempts, audit_pid);
 				set_current_state(TASK_INTERRUPTIBLE);
 				schedule();
-				__set_current_state(TASK_RUNNING);
 				goto restart;
 			}
 		}
@@ -856,7 +854,7 @@ static int audit_receive_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 		s.pid			= audit_pid;
 		s.rate_limit		= audit_rate_limit;
 		s.backlog_limit		= audit_backlog_limit;
-		s.lost			= atomic_read_unchecked(&audit_lost);
+		s.lost			= atomic_read(&audit_lost);
 		s.backlog		= skb_queue_len(&audit_skb_queue);
 		s.feature_bitmap	= AUDIT_FEATURE_BITMAP_ALL;
 		s.backlog_wait_time	= audit_backlog_wait_time_master;
@@ -1173,7 +1171,7 @@ static void __net_exit audit_net_exit(struct net *net)
 	netlink_kernel_release(sock);
 }
 
-static struct pernet_operations audit_net_ops __net_initconst = {
+static struct pernet_operations audit_net_ops __net_initdata = {
 	.init = audit_net_init,
 	.exit = audit_net_exit,
 	.id = &audit_net_id,
@@ -1341,15 +1339,14 @@ static inline void audit_get_stamp(struct audit_context *ctx,
 static long wait_for_auditd(long sleep_time)
 {
 	DECLARE_WAITQUEUE(wait, current);
-	set_current_state(TASK_UNINTERRUPTIBLE);
-	add_wait_queue_exclusive(&audit_backlog_wait, &wait);
 
 	if (audit_backlog_limit &&
-	    skb_queue_len(&audit_skb_queue) > audit_backlog_limit)
+	    skb_queue_len(&audit_skb_queue) > audit_backlog_limit) {
+		add_wait_queue_exclusive(&audit_backlog_wait, &wait);
+		set_current_state(TASK_UNINTERRUPTIBLE);
 		sleep_time = schedule_timeout(sleep_time);
-
-	__set_current_state(TASK_RUNNING);
-	remove_wait_queue(&audit_backlog_wait, &wait);
+		remove_wait_queue(&audit_backlog_wait, &wait);
+	}
 
 	return sleep_time;
 }
@@ -1886,25 +1883,35 @@ out_null:
 	audit_log_format(ab, " exe=(null)");
 }
 
+struct tty_struct *audit_get_tty(struct task_struct *tsk)
+{
+	struct tty_struct *tty = NULL;
+	unsigned long flags;
+
+	spin_lock_irqsave(&tsk->sighand->siglock, flags);
+	if (tsk->signal)
+		tty = tty_kref_get(tsk->signal->tty);
+	spin_unlock_irqrestore(&tsk->sighand->siglock, flags);
+	return tty;
+}
+
+void audit_put_tty(struct tty_struct *tty)
+{
+	tty_kref_put(tty);
+}
+
 void audit_log_task_info(struct audit_buffer *ab, struct task_struct *tsk)
 {
 	const struct cred *cred;
 	char comm[sizeof(tsk->comm)];
-	char *tty;
+	struct tty_struct *tty;
 
 	if (!ab)
 		return;
 
 	/* tsk == current */
 	cred = current_cred();
-
-	spin_lock_irq(&tsk->sighand->siglock);
-	if (tsk->signal && tsk->signal->tty && tsk->signal->tty->name)
-		tty = tsk->signal->tty->name;
-	else
-		tty = "(none)";
-	spin_unlock_irq(&tsk->sighand->siglock);
-
+	tty = audit_get_tty(tsk);
 	audit_log_format(ab,
 			 " ppid=%d pid=%d auid=%u uid=%u gid=%u"
 			 " euid=%u suid=%u fsuid=%u"
@@ -1920,11 +1927,11 @@ void audit_log_task_info(struct audit_buffer *ab, struct task_struct *tsk)
 			 from_kgid(&init_user_ns, cred->egid),
 			 from_kgid(&init_user_ns, cred->sgid),
 			 from_kgid(&init_user_ns, cred->fsgid),
-			 tty, audit_get_sessionid(tsk));
-
+			 tty ? tty_name(tty) : "(none)",
+			 audit_get_sessionid(tsk));
+	audit_put_tty(tty);
 	audit_log_format(ab, " comm=");
 	audit_log_untrustedstring(ab, get_task_comm(comm, tsk));
-
 	audit_log_d_path_exe(ab, tsk->mm);
 	audit_log_task_context(ab);
 }

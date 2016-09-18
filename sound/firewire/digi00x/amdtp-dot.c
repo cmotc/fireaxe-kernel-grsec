@@ -365,7 +365,7 @@ void amdtp_dot_midi_trigger(struct amdtp_stream *s, unsigned int port,
 	struct amdtp_dot *p = s->protocol;
 
 	if (port < p->midi_ports)
-		ACCESS_ONCE_RW(p->midi[port]) = midi;
+		ACCESS_ONCE(p->midi[port]) = midi;
 }
 
 static unsigned int process_tx_data_blocks(struct amdtp_stream *s,
@@ -421,7 +421,7 @@ int amdtp_dot_init(struct amdtp_stream *s, struct fw_unit *unit,
 
 	/* Use different mode between incoming/outgoing. */
 	if (dir == AMDTP_IN_STREAM) {
-		flags = CIP_NONBLOCKING | CIP_SKIP_INIT_DBC_CHECK;
+		flags = CIP_NONBLOCKING;
 		process_data_blocks = process_tx_data_blocks;
 	} else {
 		flags = CIP_BLOCKING;

@@ -413,7 +413,9 @@ static int coredump_wait(int exit_code, struct core_state *core_state)
 	core_state->dumper.task = tsk;
 	core_state->dumper.next = NULL;
 
-	down_write(&mm->mmap_sem);
+	if (down_write_killable(&mm->mmap_sem))
+		return -EINTR;
+
 	if (!mm->core_state)
 		core_waiters = zap_threads(tsk, mm, core_state, exit_code);
 	up_write(&mm->mmap_sem);
@@ -481,8 +483,8 @@ static void wait_for_dump_helpers(struct file *file)
 	struct pipe_inode_info *pipe = file->private_data;
 
 	pipe_lock(pipe);
-	atomic_inc(&pipe->readers);
-	atomic_dec(&pipe->writers);
+	pipe->readers++;
+	pipe->writers--;
 	wake_up_interruptible_sync(&pipe->wait);
 	kill_fasync(&pipe->fasync_readers, SIGIO, POLL_IN);
 	pipe_unlock(pipe);
@@ -491,11 +493,11 @@ static void wait_for_dump_helpers(struct file *file)
 	 * We actually want wait_event_freezable() but then we need
 	 * to clear TIF_SIGPENDING and improve dump_interrupted().
 	 */
-	wait_event_interruptible(pipe->wait, atomic_read(&pipe->readers) == 1);
+	wait_event_interruptible(pipe->wait, pipe->readers == 1);
 
 	pipe_lock(pipe);
-	atomic_dec(&pipe->readers);
-	atomic_inc(&pipe->writers);
+	pipe->readers--;
+	pipe->writers++;
 	pipe_unlock(pipe);
 }
 
@@ -542,9 +544,7 @@ void do_coredump(const siginfo_t *siginfo)
 	/* require nonrelative corefile path and be extra careful */
 	bool need_suid_safe = false;
 	bool core_dumped = false;
-	static atomic_unchecked_t core_dump_count = ATOMIC_INIT(0);
-	long signr = siginfo->si_signo;
-	int dumpable;
+	static atomic_t core_dump_count = ATOMIC_INIT(0);
 	struct coredump_params cprm = {
 		.siginfo = siginfo,
 		.regs = signal_pt_regs(),
@@ -557,17 +557,12 @@ void do_coredump(const siginfo_t *siginfo)
 		.mm_flags = mm->flags,
 	};
 
-	audit_core_dumps(signr);
-
-	dumpable = __get_dumpable(cprm.mm_flags);
-
-	if (signr == SIGSEGV || signr == SIGBUS || signr == SIGKILL || signr == SIGILL)
-		gr_handle_brute_attach(dumpable);
+	audit_core_dumps(siginfo->si_signo);
 
 	binfmt = mm->binfmt;
 	if (!binfmt || !binfmt->core_dump)
 		goto fail;
-	if (!dumpable)
+	if (!__get_dumpable(cprm.mm_flags))
 		goto fail;
 
 	cred = prepare_creds();
@@ -585,7 +580,7 @@ void do_coredump(const siginfo_t *siginfo)
 		need_suid_safe = true;
 	}
 
-	retval = coredump_wait(signr, &core_state);
+	retval = coredump_wait(siginfo->si_signo, &core_state);
 	if (retval < 0)
 		goto fail_creds;
 
@@ -628,7 +623,7 @@ void do_coredump(const siginfo_t *siginfo)
 		}
 		cprm.limit = RLIM_INFINITY;
 
-		dump_count = atomic_inc_return_unchecked(&core_dump_count);
+		dump_count = atomic_inc_return(&core_dump_count);
 		if (core_pipe_limit && (core_pipe_limit < dump_count)) {
 			printk(KERN_WARNING "Pid %d(%s) over core_pipe_limit\n",
 			       task_tgid_vnr(current), current->comm);
@@ -662,8 +657,6 @@ void do_coredump(const siginfo_t *siginfo)
 		int open_flags = O_CREAT | O_RDWR | O_NOFOLLOW |
 				 O_LARGEFILE | O_EXCL;
 
-		gr_learn_resource(current, RLIMIT_CORE, binfmt->min_coredump, 1);
-
 		if (cprm.limit < binfmt->min_coredump)
 			goto fail_unlock;
 
@@ -689,7 +682,7 @@ void do_coredump(const siginfo_t *siginfo)
 			 * If it doesn't exist, that's fine. If there's some
 			 * other problem, we'll catch it at the filp_open().
 			 */
-			(void) sys_unlink((const char __force_user *)cn.corename);
+			(void) sys_unlink((const char __user *)cn.corename);
 			set_fs(old_fs);
 		}
 
@@ -770,7 +763,7 @@ close_fail:
 		filp_close(cprm.file, NULL);
 fail_dropcount:
 	if (ispipe)
-		atomic_dec_unchecked(&core_dump_count);
+		atomic_dec(&core_dump_count);
 fail_unlock:
 	kfree(cn.corename);
 	coredump_finish(mm, core_dumped);
@@ -791,8 +784,6 @@ int dump_emit(struct coredump_params *cprm, const void *addr, int nr)
 	struct file *file = cprm->file;
 	loff_t pos = file->f_pos;
 	ssize_t n;
-
-	gr_learn_resource(current, RLIMIT_CORE, cprm->written + nr, 1);
 	if (cprm->written + nr > cprm->limit)
 		return 0;
 	while (nr) {
@@ -803,6 +794,7 @@ int dump_emit(struct coredump_params *cprm, const void *addr, int nr)
 			return 0;
 		file->f_pos = pos;
 		cprm->written += n;
+		cprm->pos += n;
 		nr -= n;
 	}
 	return 1;
@@ -814,12 +806,10 @@ int dump_skip(struct coredump_params *cprm, size_t nr)
 	static char zeroes[PAGE_SIZE];
 	struct file *file = cprm->file;
 	if (file->f_op->llseek && file->f_op->llseek != no_llseek) {
-		if (cprm->written + nr > cprm->limit)
-			return 0;
 		if (dump_interrupted() ||
 		    file->f_op->llseek(file, nr, SEEK_CUR) < 0)
 			return 0;
-		cprm->written += nr;
+		cprm->pos += nr;
 		return 1;
 	} else {
 		while (nr > PAGE_SIZE) {
@@ -834,7 +824,7 @@ EXPORT_SYMBOL(dump_skip);
 
 int dump_align(struct coredump_params *cprm, int align)
 {
-	unsigned mod = cprm->written & (align - 1);
+	unsigned mod = cprm->pos & (align - 1);
 	if (align & (align - 1))
 		return 0;
 	return mod ? dump_skip(cprm, align - mod) : 1;

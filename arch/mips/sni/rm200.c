@@ -263,14 +263,14 @@ spurious_8259A_irq:
 		static int spurious_irq_mask;
 		/*
 		 * At this point we can be sure the IRQ is spurious,
-		 * lets ACK and report it. [once per IRQ]
+		 * let's ACK and report it. [once per IRQ]
 		 */
 		if (!(spurious_irq_mask & irqmask)) {
 			printk(KERN_DEBUG
 			       "spurious RM200 8259A interrupt: IRQ%d.\n", irq);
 			spurious_irq_mask |= irqmask;
 		}
-		atomic_inc_unchecked(&irq_err_count);
+		atomic_inc(&irq_err_count);
 		/*
 		 * Theoretically we do not have to handle this IRQ,
 		 * but in Linux this does not cause problems and is

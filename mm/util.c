@@ -239,12 +239,6 @@ int vma_is_stack_for_task(struct vm_area_struct *vma, struct task_struct *t)
 void arch_pick_mmap_layout(struct mm_struct *mm)
 {
 	mm->mmap_base = TASK_UNMAPPED_BASE;
-
-#ifdef CONFIG_PAX_RANDMMAP
-	if (mm->pax_flags & MF_PAX_RANDMMAP)
-		mm->mmap_base += mm->delta_mmap;
-#endif
-
 	mm->get_unmapped_area = arch_get_unmapped_area;
 }
 #endif
@@ -303,7 +297,8 @@ unsigned long vm_mmap_pgoff(struct file *file, unsigned long addr,
 
 	ret = security_mmap_file(file, prot, flag);
 	if (!ret) {
-		down_write(&mm->mmap_sem);
+		if (down_write_killable(&mm->mmap_sem))
+			return -EINTR;
 		ret = do_mmap_pgoff(file, addr, len, prot, flag, pgoff,
 				    &populate);
 		up_write(&mm->mmap_sem);
@@ -351,6 +346,29 @@ void *page_rmapping(struct page *page)
 	page = compound_head(page);
 	return __page_rmapping(page);
 }
+
+/*
+ * Return true if this page is mapped into pagetables.
+ * For compound page it returns true if any subpage of compound page is mapped.
+ */
+bool page_mapped(struct page *page)
+{
+	int i;
+
+	if (likely(!PageCompound(page)))
+		return atomic_read(&page->_mapcount) >= 0;
+	page = compound_head(page);
+	if (atomic_read(compound_mapcount_ptr(page)) >= 0)
+		return true;
+	if (PageHuge(page))
+		return false;
+	for (i = 0; i < hpage_nr_pages(page); i++) {
+		if (atomic_read(&page[i]._mapcount) >= 0)
+			return true;
+	}
+	return false;
+}
+EXPORT_SYMBOL(page_mapped);
 
 struct anon_vma *page_anon_vma(struct page *page)
 {
@@ -406,7 +424,6 @@ unsigned long sysctl_overcommit_kbytes __read_mostly;
 int sysctl_max_map_count __read_mostly = DEFAULT_MAX_MAP_COUNT;
 unsigned long sysctl_user_reserve_kbytes __read_mostly = 1UL << 17; /* 128MB */
 unsigned long sysctl_admin_reserve_kbytes __read_mostly = 1UL << 13; /* 8MB */
-unsigned long sysctl_heap_stack_gap __read_mostly = 64*1024;
 
 int overcommit_ratio_handler(struct ctl_table *table, int write,
 			     void __user *buffer, size_t *lenp,
@@ -585,9 +602,6 @@ int get_cmdline(struct task_struct *task, char *buffer, int buflen)
 		goto out;
 	if (!mm->arg_end)
 		goto out_mm;	/* Shh! No looking before we're done */
-
-	if (gr_acl_handle_procpidmem(task))
-		goto out_mm;
 
 	down_read(&mm->mmap_sem);
 	arg_start = mm->arg_start;

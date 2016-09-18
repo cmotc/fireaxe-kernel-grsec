@@ -699,6 +699,13 @@ mwifiex_close(struct net_device *dev)
 		priv->scan_aborting = true;
 	}
 
+	if (priv->sched_scanning) {
+		mwifiex_dbg(priv->adapter, INFO,
+			    "aborting bgscan on ndo_stop\n");
+		mwifiex_stop_bg_scan(priv);
+		cfg80211_sched_scan_stopped(priv->wdev.wiphy);
+	}
+
 	return 0;
 }
 
@@ -750,13 +757,6 @@ int mwifiex_queue_tx_pkt(struct mwifiex_private *priv, struct sk_buff *skb)
 
 	mwifiex_queue_main_work(priv->adapter);
 
-	if (priv->sched_scanning) {
-		mwifiex_dbg(priv->adapter, INFO,
-			    "aborting bgscan on ndo_stop\n");
-		mwifiex_stop_bg_scan(priv);
-		cfg80211_sched_scan_stopped(priv->wdev.wiphy);
-	}
-
 	return 0;
 }
 
@@ -805,7 +805,7 @@ mwifiex_clone_skb_for_tx_status(struct mwifiex_private *priv,
 /*
  * CFG802.11 network device handler for data transmission.
  */
-static netdev_tx_t
+static int
 mwifiex_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct mwifiex_private *priv = mwifiex_netdev_get_priv(dev);
@@ -1071,12 +1071,14 @@ void mwifiex_drv_info_dump(struct mwifiex_adapter *adapter)
 			     priv->netdev->name, priv->num_tx_timeout);
 	}
 
-	if (adapter->iface_type == MWIFIEX_SDIO) {
-		p += sprintf(p, "\n=== SDIO register dump===\n");
+	if (adapter->iface_type == MWIFIEX_SDIO ||
+	    adapter->iface_type == MWIFIEX_PCIE) {
+		p += sprintf(p, "\n=== %s register dump===\n",
+			     adapter->iface_type == MWIFIEX_SDIO ?
+							"SDIO" : "PCIE");
 		if (adapter->if_ops.reg_dump)
 			p += adapter->if_ops.reg_dump(adapter, p);
 	}
-
 	p += sprintf(p, "\n=== more debug information\n");
 	debug_info = kzalloc(sizeof(*debug_info), GFP_KERNEL);
 	if (debug_info) {
@@ -1429,7 +1431,7 @@ int mwifiex_remove_card(struct mwifiex_adapter *adapter, struct semaphore *sem)
 	struct mwifiex_private *priv = NULL;
 	int i;
 
-	if (down_interruptible(sem))
+	if (down_trylock(sem))
 		goto exit_sem_err;
 
 	if (!adapter)

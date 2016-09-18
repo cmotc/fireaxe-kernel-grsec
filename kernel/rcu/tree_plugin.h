@@ -722,18 +722,22 @@ static void sync_rcu_exp_handler(void *info)
  * synchronize_rcu_expedited - Brute-force RCU grace period
  *
  * Wait for an RCU-preempt grace period, but expedite it.  The basic
- * idea is to invoke synchronize_sched_expedited() to push all the tasks to
- * the ->blkd_tasks lists and wait for this list to drain.  This consumes
- * significant time on all CPUs and is unfriendly to real-time workloads,
- * so is thus not recommended for any sort of common-case code.
- * In fact, if you are using synchronize_rcu_expedited() in a loop,
- * please restructure your code to batch your updates, and then Use a
- * single synchronize_rcu() instead.
+ * idea is to IPI all non-idle non-nohz online CPUs.  The IPI handler
+ * checks whether the CPU is in an RCU-preempt critical section, and
+ * if so, it sets a flag that causes the outermost rcu_read_unlock()
+ * to report the quiescent state.  On the other hand, if the CPU is
+ * not in an RCU read-side critical section, the IPI handler reports
+ * the quiescent state immediately.
+ *
+ * Although this is a greate improvement over previous expedited
+ * implementations, it is still unfriendly to real-time workloads, so is
+ * thus not recommended for any sort of common-case code.  In fact, if
+ * you are using synchronize_rcu_expedited() in a loop, please restructure
+ * your code to batch your updates, and then Use a single synchronize_rcu()
+ * instead.
  */
 void synchronize_rcu_expedited(void)
 {
-	struct rcu_node *rnp;
-	struct rcu_node *rnp_unlock;
 	struct rcu_state *rsp = rcu_state_p;
 	unsigned long s;
 
@@ -744,23 +748,14 @@ void synchronize_rcu_expedited(void)
 	}
 
 	s = rcu_exp_gp_seq_snap(rsp);
-
-	rnp_unlock = exp_funnel_lock(rsp, s);
-	if (rnp_unlock == NULL)
+	if (exp_funnel_lock(rsp, s))
 		return;  /* Someone else did our work for us. */
-
-	rcu_exp_gp_seq_start(rsp);
 
 	/* Initialize the rcu_node tree in preparation for the wait. */
 	sync_rcu_exp_select_cpus(rsp, sync_rcu_exp_handler);
 
-	/* Wait for snapshotted ->blkd_tasks lists to drain. */
-	rnp = rcu_get_root(rsp);
-	synchronize_sched_expedited_wait(rsp);
-
-	/* Clean up and exit. */
-	rcu_exp_gp_seq_end(rsp);
-	mutex_unlock(&rnp_unlock->exp_funnel_mutex);
+	/* Wait for ->blkd_tasks lists to drain, then wake everyone up. */
+	rcu_exp_wait_wake(rsp, s);
 }
 EXPORT_SYMBOL_GPL(synchronize_rcu_expedited);
 
@@ -1268,7 +1263,7 @@ static void rcu_boost_kthread_setaffinity(struct rcu_node *rnp, int outgoingcpu)
 	free_cpumask_var(cm);
 }
 
-static struct smp_hotplug_thread rcu_cpu_thread_spec __read_only = {
+static struct smp_hotplug_thread rcu_cpu_thread_spec = {
 	.store			= &rcu_cpu_kthread_task,
 	.thread_should_run	= rcu_cpu_kthread_should_run,
 	.thread_fn		= rcu_cpu_kthread,
@@ -1737,7 +1732,7 @@ static void print_cpu_stall_info(struct rcu_state *rsp, int cpu)
 	       "o."[!!(rdp->grpmask & rdp->mynode->qsmaskinit)],
 	       "N."[!!(rdp->grpmask & rdp->mynode->qsmaskinitnext)],
 	       ticks_value, ticks_title,
-	       atomic_read_unchecked(&rdtp->dynticks) & 0xfff,
+	       atomic_read(&rdtp->dynticks) & 0xfff,
 	       rdtp->dynticks_nesting, rdtp->dynticks_nmi_nesting,
 	       rdp->softirq_snap, kstat_softirqs_cpu(RCU_SOFTIRQ, cpu),
 	       READ_ONCE(rsp->n_force_qs) - rsp->n_force_qs_gpstart,
@@ -2271,8 +2266,8 @@ static int rcu_nocb_kthread(void *arg)
 		}
 		trace_rcu_batch_end(rdp->rsp->name, c, !!list, 0, 0, 1);
 		smp_mb__before_atomic();  /* _add after CB invocation. */
-		atomic_long_sub(c, &rdp->nocb_q_count);
-		atomic_long_sub(cl, &rdp->nocb_q_count_lazy);
+		atomic_long_add(-c, &rdp->nocb_q_count);
+		atomic_long_add(-cl, &rdp->nocb_q_count_lazy);
 		rdp->n_nocbs_invoked += c;
 	}
 	return 0;
@@ -2627,9 +2622,9 @@ static void rcu_sysidle_enter(int irq)
 	j = jiffies;
 	WRITE_ONCE(rdtp->dynticks_idle_jiffies, j);
 	smp_mb__before_atomic();
-	atomic_inc_unchecked(&rdtp->dynticks_idle);
+	atomic_inc(&rdtp->dynticks_idle);
 	smp_mb__after_atomic();
-	WARN_ON_ONCE(atomic_read_unchecked(&rdtp->dynticks_idle) & 0x1);
+	WARN_ON_ONCE(atomic_read(&rdtp->dynticks_idle) & 0x1);
 }
 
 /*
@@ -2700,9 +2695,9 @@ static void rcu_sysidle_exit(int irq)
 
 	/* Record end of idle period. */
 	smp_mb__before_atomic();
-	atomic_inc_unchecked(&rdtp->dynticks_idle);
+	atomic_inc(&rdtp->dynticks_idle);
 	smp_mb__after_atomic();
-	WARN_ON_ONCE(!(atomic_read_unchecked(&rdtp->dynticks_idle) & 0x1));
+	WARN_ON_ONCE(!(atomic_read(&rdtp->dynticks_idle) & 0x1));
 
 	/*
 	 * If we are the timekeeping CPU, we are permitted to be non-idle
@@ -2748,7 +2743,7 @@ static void rcu_sysidle_check_cpu(struct rcu_data *rdp, bool *isidle,
 	WARN_ON_ONCE(smp_processor_id() != tick_do_timer_cpu);
 
 	/* Pick up current idle and NMI-nesting counter and check. */
-	cur = atomic_read_unchecked(&rdtp->dynticks_idle);
+	cur = atomic_read(&rdtp->dynticks_idle);
 	if (cur & 0x1) {
 		*isidle = false; /* We are not idle! */
 		return;

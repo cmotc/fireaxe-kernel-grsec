@@ -89,14 +89,13 @@ unsigned long arch_get_unmapped_area(struct file *filp, unsigned long addr, unsi
 	struct vm_area_struct * vma;
 	unsigned long task_size = TASK_SIZE;
 	int do_color_align;
-	unsigned long offset = gr_rand_threadstack_offset(mm, filp, flags);
 	struct vm_unmapped_area_info info;
 
 	if (flags & MAP_FIXED) {
 		/* We do not accept a shared mapping if it would violate
 		 * cache aliasing constraints.
 		 */
-		if ((filp || (flags & MAP_SHARED)) &&
+		if ((flags & MAP_SHARED) &&
 		    ((addr - (pgoff << PAGE_SHIFT)) & (SHMLBA - 1)))
 			return -EINVAL;
 		return addr;
@@ -111,10 +110,6 @@ unsigned long arch_get_unmapped_area(struct file *filp, unsigned long addr, unsi
 	if (filp || (flags & MAP_SHARED))
 		do_color_align = 1;
 
-#ifdef CONFIG_PAX_RANDMMAP
-	if (!(mm->pax_flags & MF_PAX_RANDMMAP))
-#endif
-
 	if (addr) {
 		if (do_color_align)
 			addr = COLOR_ALIGN(addr, pgoff);
@@ -122,28 +117,22 @@ unsigned long arch_get_unmapped_area(struct file *filp, unsigned long addr, unsi
 			addr = PAGE_ALIGN(addr);
 
 		vma = find_vma(mm, addr);
-		if (task_size - len >= addr && check_heap_stack_gap(vma, addr, len, offset))
+		if (task_size - len >= addr &&
+		    (!vma || addr + len <= vma->vm_start))
 			return addr;
 	}
 
 	info.flags = 0;
 	info.length = len;
-	info.low_limit = mm->mmap_base;
+	info.low_limit = TASK_UNMAPPED_BASE;
 	info.high_limit = min(task_size, VA_EXCLUDE_START);
 	info.align_mask = do_color_align ? (PAGE_MASK & (SHMLBA - 1)) : 0;
 	info.align_offset = pgoff << PAGE_SHIFT;
-	info.threadstack_offset = offset;
 	addr = vm_unmapped_area(&info);
 
 	if ((addr & ~PAGE_MASK) && task_size > VA_EXCLUDE_END) {
 		VM_BUG_ON(addr != -ENOMEM);
 		info.low_limit = VA_EXCLUDE_END;
-
-#ifdef CONFIG_PAX_RANDMMAP
-		if (mm->pax_flags & MF_PAX_RANDMMAP)
-			info.low_limit += mm->delta_mmap;
-#endif
-
 		info.high_limit = task_size;
 		addr = vm_unmapped_area(&info);
 	}
@@ -152,16 +141,15 @@ unsigned long arch_get_unmapped_area(struct file *filp, unsigned long addr, unsi
 }
 
 unsigned long
-arch_get_unmapped_area_topdown(struct file *filp, unsigned long addr0,
-			  unsigned long len, unsigned long pgoff,
-			  unsigned long flags)
+arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
+			  const unsigned long len, const unsigned long pgoff,
+			  const unsigned long flags)
 {
 	struct vm_area_struct *vma;
 	struct mm_struct *mm = current->mm;
 	unsigned long task_size = STACK_TOP32;
 	unsigned long addr = addr0;
 	int do_color_align;
-	unsigned long offset = gr_rand_threadstack_offset(mm, filp, flags);
 	struct vm_unmapped_area_info info;
 
 	/* This should only ever run for 32-bit processes.  */
@@ -171,7 +159,7 @@ arch_get_unmapped_area_topdown(struct file *filp, unsigned long addr0,
 		/* We do not accept a shared mapping if it would violate
 		 * cache aliasing constraints.
 		 */
-		if ((filp || (flags & MAP_SHARED)) &&
+		if ((flags & MAP_SHARED) &&
 		    ((addr - (pgoff << PAGE_SHIFT)) & (SHMLBA - 1)))
 			return -EINVAL;
 		return addr;
@@ -184,10 +172,6 @@ arch_get_unmapped_area_topdown(struct file *filp, unsigned long addr0,
 	if (filp || (flags & MAP_SHARED))
 		do_color_align = 1;
 
-#ifdef CONFIG_PAX_RANDMMAP
-	if (!(mm->pax_flags & MF_PAX_RANDMMAP))
-#endif
-
 	/* requesting a specific address */
 	if (addr) {
 		if (do_color_align)
@@ -196,7 +180,8 @@ arch_get_unmapped_area_topdown(struct file *filp, unsigned long addr0,
 			addr = PAGE_ALIGN(addr);
 
 		vma = find_vma(mm, addr);
-		if (task_size - len >= addr && check_heap_stack_gap(vma, addr, len, offset))
+		if (task_size - len >= addr &&
+		    (!vma || addr + len <= vma->vm_start))
 			return addr;
 	}
 
@@ -206,7 +191,6 @@ arch_get_unmapped_area_topdown(struct file *filp, unsigned long addr0,
 	info.high_limit = mm->mmap_base;
 	info.align_mask = do_color_align ? (PAGE_MASK & (SHMLBA - 1)) : 0;
 	info.align_offset = pgoff << PAGE_SHIFT;
-	info.threadstack_offset = offset;
 	addr = vm_unmapped_area(&info);
 
 	/*
@@ -219,12 +203,6 @@ arch_get_unmapped_area_topdown(struct file *filp, unsigned long addr0,
 		VM_BUG_ON(addr != -ENOMEM);
 		info.flags = 0;
 		info.low_limit = TASK_UNMAPPED_BASE;
-
-#ifdef CONFIG_PAX_RANDMMAP
-		if (mm->pax_flags & MF_PAX_RANDMMAP)
-			info.low_limit += mm->delta_mmap;
-#endif
-
 		info.high_limit = STACK_TOP32;
 		addr = vm_unmapped_area(&info);
 	}
@@ -281,13 +259,9 @@ unsigned long get_fb_unmapped_area(struct file *filp, unsigned long orig_addr, u
 EXPORT_SYMBOL(get_fb_unmapped_area);
 
 /* Essentially the same as PowerPC.  */
-static unsigned long mmap_rnd(struct mm_struct *mm)
+static unsigned long mmap_rnd(void)
 {
 	unsigned long rnd = 0UL;
-
-#ifdef CONFIG_PAX_RANDMMAP
-	if (!(mm->pax_flags & MF_PAX_RANDMMAP))
-#endif
 
 	if (current->flags & PF_RANDOMIZE) {
 		unsigned long val = get_random_long();
@@ -301,7 +275,7 @@ static unsigned long mmap_rnd(struct mm_struct *mm)
 
 void arch_pick_mmap_layout(struct mm_struct *mm)
 {
-	unsigned long random_factor = mmap_rnd(mm);
+	unsigned long random_factor = mmap_rnd();
 	unsigned long gap;
 
 	/*
@@ -314,12 +288,6 @@ void arch_pick_mmap_layout(struct mm_struct *mm)
 	    gap == RLIM_INFINITY ||
 	    sysctl_legacy_va_layout) {
 		mm->mmap_base = TASK_UNMAPPED_BASE + random_factor;
-
-#ifdef CONFIG_PAX_RANDMMAP
-		if (mm->pax_flags & MF_PAX_RANDMMAP)
-			mm->mmap_base += mm->delta_mmap;
-#endif
-
 		mm->get_unmapped_area = arch_get_unmapped_area;
 	} else {
 		/* We know it's 32-bit */
@@ -331,12 +299,6 @@ void arch_pick_mmap_layout(struct mm_struct *mm)
 			gap = (task_size / 6 * 5);
 
 		mm->mmap_base = PAGE_ALIGN(task_size - gap - random_factor);
-
-#ifdef CONFIG_PAX_RANDMMAP
-		if (mm->pax_flags & MF_PAX_RANDMMAP)
-			mm->mmap_base -= mm->delta_mmap + mm->delta_stack;
-#endif
-
 		mm->get_unmapped_area = arch_get_unmapped_area_topdown;
 	}
 }

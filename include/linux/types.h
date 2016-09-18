@@ -156,14 +156,11 @@ typedef u32 dma_addr_t;
 
 typedef unsigned __bitwise__ gfp_t;
 typedef unsigned __bitwise__ fmode_t;
-typedef unsigned __bitwise__ oom_flags_t;
 
 #ifdef CONFIG_PHYS_ADDR_T_64BIT
 typedef u64 phys_addr_t;
-#define RESOURCE_SIZE_MAX ULLONG_MAX
 #else
 typedef u32 phys_addr_t;
-#define RESOURCE_SIZE_MAX ULONG_MAX
 #endif
 
 typedef phys_addr_t resource_size_t;
@@ -178,26 +175,10 @@ typedef struct {
 	int counter;
 } atomic_t;
 
-#ifdef CONFIG_PAX_REFCOUNT
-typedef struct {
-	int counter;
-} atomic_unchecked_t;
-#else
-typedef atomic_t atomic_unchecked_t;
-#endif
-
 #ifdef CONFIG_64BIT
 typedef struct {
 	long counter;
 } atomic64_t;
-
-#ifdef CONFIG_PAX_REFCOUNT
-typedef struct {
-	long counter;
-} atomic64_unchecked_t;
-#else
-typedef atomic64_t atomic64_unchecked_t;
-#endif
 #endif
 
 struct list_head {

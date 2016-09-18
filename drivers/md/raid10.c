@@ -1068,7 +1068,7 @@ static void __make_request(struct mddev *mddev, struct bio *bio)
 	struct md_rdev *blocked_rdev;
 	struct blk_plug_cb *cb;
 	struct raid10_plug_cb *plug = NULL;
-	sector_t sectors_handled;
+	int sectors_handled;
 	int max_sectors;
 	int sectors;
 
@@ -1102,8 +1102,8 @@ static void __make_request(struct mddev *mddev, struct bio *bio)
 		bio->bi_iter.bi_sector < conf->reshape_progress))) {
 		/* Need to update reshape_position in metadata */
 		mddev->reshape_position = conf->reshape_progress;
-		set_bit(MD_CHANGE_DEVS, &mddev->flags);
-		set_bit(MD_CHANGE_PENDING, &mddev->flags);
+		set_mask_bits(&mddev->flags, 0,
+			      BIT(MD_CHANGE_DEVS) | BIT(MD_CHANGE_PENDING));
 		md_wakeup_thread(mddev->thread);
 		wait_event(mddev->sb_wait,
 			   !test_bit(MD_CHANGE_PENDING, &mddev->flags));
@@ -1591,8 +1591,8 @@ static void raid10_error(struct mddev *mddev, struct md_rdev *rdev)
 	set_bit(MD_RECOVERY_INTR, &mddev->recovery);
 	set_bit(Blocked, &rdev->flags);
 	set_bit(Faulty, &rdev->flags);
-	set_bit(MD_CHANGE_DEVS, &mddev->flags);
-	set_bit(MD_CHANGE_PENDING, &mddev->flags);
+	set_mask_bits(&mddev->flags, 0,
+		      BIT(MD_CHANGE_DEVS) | BIT(MD_CHANGE_PENDING));
 	spin_unlock_irqrestore(&conf->device_lock, flags);
 	printk(KERN_ALERT
 	       "md/raid10:%s: Disk failure on %s, disabling device.\n"
@@ -1829,7 +1829,7 @@ static void end_sync_read(struct bio *bio)
 		/* The write handler will notice the lack of
 		 * R10BIO_Uptodate and record any errors etc
 		 */
-		atomic_add_unchecked(r10_bio->sectors,
+		atomic_add(r10_bio->sectors,
 			   &conf->mirrors[d].rdev->corrected_errors);
 
 	/* for reconstruct, we always reschedule after a read.
@@ -1978,7 +1978,7 @@ static void sync_request_write(struct mddev *mddev, struct r10bio *r10_bio)
 			}
 			if (j == vcnt)
 				continue;
-			atomic64_add_unchecked(r10_bio->sectors, &mddev->resync_mismatches);
+			atomic64_add(r10_bio->sectors, &mddev->resync_mismatches);
 			if (test_bit(MD_RECOVERY_CHECK, &mddev->recovery))
 				/* Don't fix anything. */
 				continue;
@@ -2177,7 +2177,7 @@ static void check_decay_read_errors(struct mddev *mddev, struct md_rdev *rdev)
 {
 	struct timespec cur_time_mon;
 	unsigned long hours_since_last;
-	unsigned int read_errors = atomic_read_unchecked(&rdev->read_errors);
+	unsigned int read_errors = atomic_read(&rdev->read_errors);
 
 	ktime_get_ts(&cur_time_mon);
 
@@ -2199,9 +2199,9 @@ static void check_decay_read_errors(struct mddev *mddev, struct md_rdev *rdev)
 	 * overflowing the shift of read_errors by hours_since_last.
 	 */
 	if (hours_since_last >= 8 * sizeof(read_errors))
-		atomic_set_unchecked(&rdev->read_errors, 0);
+		atomic_set(&rdev->read_errors, 0);
 	else
-		atomic_set_unchecked(&rdev->read_errors, read_errors >> hours_since_last);
+		atomic_set(&rdev->read_errors, read_errors >> hours_since_last);
 }
 
 static int r10_sync_page_io(struct md_rdev *rdev, sector_t sector,
@@ -2255,8 +2255,8 @@ static void fix_read_error(struct r10conf *conf, struct mddev *mddev, struct r10
 		return;
 
 	check_decay_read_errors(mddev, rdev);
-	atomic_inc_unchecked(&rdev->read_errors);
-	if (atomic_read_unchecked(&rdev->read_errors) > max_read_errors) {
+	atomic_inc(&rdev->read_errors);
+	if (atomic_read(&rdev->read_errors) > max_read_errors) {
 		char b[BDEVNAME_SIZE];
 		bdevname(rdev->bdev, b);
 
@@ -2264,7 +2264,7 @@ static void fix_read_error(struct r10conf *conf, struct mddev *mddev, struct r10
 		       "md/raid10:%s: %s: Raid device exceeded "
 		       "read_error threshold [cur %d:max %d]\n",
 		       mdname(mddev), b,
-		       atomic_read_unchecked(&rdev->read_errors), max_read_errors);
+		       atomic_read(&rdev->read_errors), max_read_errors);
 		printk(KERN_NOTICE
 		       "md/raid10:%s: %s: Failing raid device\n",
 		       mdname(mddev), b);
@@ -2417,7 +2417,7 @@ static void fix_read_error(struct r10conf *conf, struct mddev *mddev, struct r10
 					       sect +
 					       choose_data_offset(r10_bio, rdev)),
 				       bdevname(rdev->bdev, b));
-				atomic_add_unchecked(s, &rdev->corrected_errors);
+				atomic_add(s, &rdev->corrected_errors);
 			}
 
 			rdev_dec_pending(rdev, mddev);
@@ -3782,8 +3782,10 @@ static int raid10_resize(struct mddev *mddev, sector_t sectors)
 			return ret;
 	}
 	md_set_array_sectors(mddev, size);
-	set_capacity(mddev->gendisk, mddev->array_sectors);
-	revalidate_disk(mddev->gendisk);
+	if (mddev->queue) {
+		set_capacity(mddev->gendisk, mddev->array_sectors);
+		revalidate_disk(mddev->gendisk);
+	}
 	if (sectors > mddev->dev_sectors &&
 	    mddev->recovery_cp > oldsize) {
 		mddev->recovery_cp = oldsize;
@@ -4593,8 +4595,10 @@ static void raid10_finish_reshape(struct mddev *mddev)
 			set_bit(MD_RECOVERY_NEEDED, &mddev->recovery);
 		}
 		mddev->resync_max_sectors = size;
-		set_capacity(mddev->gendisk, mddev->array_sectors);
-		revalidate_disk(mddev->gendisk);
+		if (mddev->queue) {
+			set_capacity(mddev->gendisk, mddev->array_sectors);
+			revalidate_disk(mddev->gendisk);
+		}
 	} else {
 		int d;
 		for (d = conf->geo.raid_disks ;

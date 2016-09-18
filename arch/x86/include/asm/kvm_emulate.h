@@ -279,8 +279,6 @@ enum x86emul_mode {
 #define X86EMUL_SMM_MASK             (1 << 6)
 #define X86EMUL_SMM_INSIDE_NMI_MASK  (1 << 7)
 
-struct fastop;
-
 struct x86_emulate_ctxt {
 	const struct x86_emulate_ops *ops;
 
@@ -313,10 +311,7 @@ struct x86_emulate_ctxt {
 	struct operand src;
 	struct operand src2;
 	struct operand dst;
-	union {
-		int (*execute)(struct x86_emulate_ctxt *ctxt);
-		void (*fastop)(struct fastop *fake);
-	} u;
+	int (*execute)(struct x86_emulate_ctxt *ctxt);
 	int (*check_perm)(struct x86_emulate_ctxt *ctxt);
 	/*
 	 * The following six fields are cleared together,

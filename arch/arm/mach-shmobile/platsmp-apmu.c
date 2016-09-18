@@ -22,7 +22,6 @@
 #include <asm/proc-fns.h>
 #include <asm/smp_plat.h>
 #include <asm/suspend.h>
-#include <asm/pgtable.h>
 #include "common.h"
 #include "platsmp-apmu.h"
 
@@ -233,8 +232,6 @@ static int shmobile_smp_apmu_enter_suspend(suspend_state_t state)
 
 void __init shmobile_smp_apmu_suspend_init(void)
 {
-	pax_open_kernel();
-	const_cast(shmobile_suspend_ops.enter) = shmobile_smp_apmu_enter_suspend;
-	pax_close_kernel();
+	shmobile_suspend_ops.enter = shmobile_smp_apmu_enter_suspend;
 }
 #endif

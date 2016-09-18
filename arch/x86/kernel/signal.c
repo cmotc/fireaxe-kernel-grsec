@@ -226,7 +226,7 @@ static unsigned long align_sigframe(unsigned long sp)
 	 * Align the stack pointer according to the i386 ABI,
 	 * i.e. so that on function entry ((sp + 4) & 15) == 0.
 	 */
-	sp = ((sp - 12) & -16ul) - 4;
+	sp = ((sp + 4) & -16ul) - 4;
 #else /* !CONFIG_X86_32 */
 	sp = round_down(sp, 16) - 8;
 #endif
@@ -248,18 +248,17 @@ get_sigframe(struct k_sigaction *ka, struct pt_regs *regs, size_t frame_size,
 	if (config_enabled(CONFIG_X86_64))
 		sp -= 128;
 
-	if (!onsigstack) {
-		/* This is the X/Open sanctioned signal stack switching.  */
-		if (ka->sa.sa_flags & SA_ONSTACK) {
-			if (current->sas_ss_size)
-				sp = current->sas_ss_sp + current->sas_ss_size;
-		} else if (config_enabled(CONFIG_X86_32) &&
-			   (regs->ss & 0xffff) != __USER_DS &&
-			   !(ka->sa.sa_flags & SA_RESTORER) &&
-			   ka->sa.sa_restorer) {
-				/* This is the legacy signal stack switching. */
-				sp = (unsigned long) ka->sa.sa_restorer;
-		}
+	/* This is the X/Open sanctioned signal stack switching.  */
+	if (ka->sa.sa_flags & SA_ONSTACK) {
+		if (sas_ss_flags(sp) == 0)
+			sp = current->sas_ss_sp + current->sas_ss_size;
+	} else if (config_enabled(CONFIG_X86_32) &&
+		   !onsigstack &&
+		   (regs->ss & 0xffff) != __USER_DS &&
+		   !(ka->sa.sa_flags & SA_RESTORER) &&
+		   ka->sa.sa_restorer) {
+		/* This is the legacy signal stack switching. */
+		sp = (unsigned long) ka->sa.sa_restorer;
 	}
 
 	if (fpu->fpstate_active) {
@@ -335,9 +334,10 @@ __setup_frame(int sig, struct ksignal *ksig, sigset_t *set,
 	}
 
 	if (current->mm->context.vdso)
-		restorer = (void __force_user *)(current->mm->context.vdso + vdso_image_32.sym___kernel_sigreturn);
+		restorer = current->mm->context.vdso +
+			vdso_image_32.sym___kernel_sigreturn;
 	else
-		restorer = frame->retcode;
+		restorer = &frame->retcode;
 	if (ksig->ka.sa.sa_flags & SA_RESTORER)
 		restorer = ksig->ka.sa.sa_restorer;
 
@@ -351,7 +351,7 @@ __setup_frame(int sig, struct ksignal *ksig, sigset_t *set,
 	 * reasons and because gdb uses it as a signature to notice
 	 * signal handler stack frames.
 	 */
-	err |= __put_user(*((u64 *)&retcode), (u64 __user *)frame->retcode);
+	err |= __put_user(*((u64 *)&retcode), (u64 *)frame->retcode);
 
 	if (err)
 		return -EFAULT;
@@ -390,7 +390,7 @@ static int __setup_rt_frame(int sig, struct ksignal *ksig,
 		put_user_ex(&frame->uc, &frame->puc);
 
 		/* Create the ucontext.  */
-		if (cpu_has_xsave)
+		if (boot_cpu_has(X86_FEATURE_XSAVE))
 			put_user_ex(UC_FP_XSTATE, &frame->uc.uc_flags);
 		else
 			put_user_ex(0, &frame->uc.uc_flags);
@@ -398,10 +398,8 @@ static int __setup_rt_frame(int sig, struct ksignal *ksig,
 		save_altstack_ex(&frame->uc.uc_stack, regs->sp);
 
 		/* Set up to return from userspace.  */
-		if (current->mm->context.vdso)
-			restorer = (void __force_user *)(current->mm->context.vdso + vdso_image_32.sym___kernel_rt_sigreturn);
-		else
-			restorer = (void __user *)&frame->retcode;
+		restorer = current->mm->context.vdso +
+			vdso_image_32.sym___kernel_rt_sigreturn;
 		if (ksig->ka.sa.sa_flags & SA_RESTORER)
 			restorer = ksig->ka.sa.sa_restorer;
 		put_user_ex(restorer, &frame->pretcode);
@@ -413,7 +411,7 @@ static int __setup_rt_frame(int sig, struct ksignal *ksig,
 		 * reasons and because gdb uses it as a signature to notice
 		 * signal handler stack frames.
 		 */
-		put_user_ex(*((u64 *)&rt_retcode), (u64 __user *)frame->retcode);
+		put_user_ex(*((u64 *)&rt_retcode), (u64 *)frame->retcode);
 	} put_user_catch(err);
 	
 	err |= copy_siginfo_to_user(&frame->info, &ksig->info);
@@ -443,7 +441,7 @@ static unsigned long frame_uc_flags(struct pt_regs *regs)
 {
 	unsigned long flags;
 
-	if (cpu_has_xsave)
+	if (boot_cpu_has(X86_FEATURE_XSAVE))
 		flags = UC_FP_XSTATE | UC_SIGCONTEXT_SS;
 	else
 		flags = UC_SIGCONTEXT_SS;
@@ -683,12 +681,7 @@ setup_rt_frame(struct ksignal *ksig, struct pt_regs *regs)
 {
 	int usig = ksig->sig;
 	sigset_t *set = sigmask_to_save();
-	sigset_t sigcopy;
-	compat_sigset_t *cset;
-
-	sigcopy = *set;
-
-	cset = (compat_sigset_t *) &sigcopy;
+	compat_sigset_t *cset = (compat_sigset_t *) set;
 
 	/* Set up the stack frame */
 	if (is_ia32_frame()) {
@@ -699,7 +692,7 @@ setup_rt_frame(struct ksignal *ksig, struct pt_regs *regs)
 	} else if (is_x32_frame()) {
 		return x32_setup_rt_frame(ksig, cset, regs);
 	} else {
-		return __setup_rt_frame(ksig->sig, ksig, &sigcopy, regs);
+		return __setup_rt_frame(ksig->sig, ksig, set, regs);
 	}
 }
 
@@ -768,7 +761,7 @@ handle_signal(struct ksignal *ksig, struct pt_regs *regs)
 static inline unsigned long get_nr_restart_syscall(const struct pt_regs *regs)
 {
 #ifdef CONFIG_X86_64
-	if (is_ia32_task())
+	if (in_ia32_syscall())
 		return __NR_ia32_restart_syscall;
 #endif
 #ifdef CONFIG_X86_X32_ABI

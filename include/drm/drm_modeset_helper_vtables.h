@@ -638,7 +638,7 @@ struct drm_encoder_helper_funcs {
 	int (*atomic_check)(struct drm_encoder *encoder,
 			    struct drm_crtc_state *crtc_state,
 			    struct drm_connector_state *conn_state);
-} __no_const;
+};
 
 /**
  * drm_encoder_helper_add - sets the helper vtable for an encoder
@@ -672,7 +672,7 @@ struct drm_connector_helper_funcs {
 	 * fixed panel can also manually add specific modes using
 	 * drm_mode_probed_add(). Drivers which manually add modes should also
 	 * make sure that the @display_info, @width_mm and @height_mm fields of the
-	 * struct #drm_connector are filled in.
+	 * struct &drm_connector are filled in.
 	 *
 	 * Virtual drivers that just want some standard VESA mode with a given
 	 * resolution can call drm_add_modes_noedid(), and mark the preferred
@@ -772,7 +772,6 @@ struct drm_connector_helper_funcs {
 	struct drm_encoder *(*atomic_best_encoder)(struct drm_connector *connector,
 						   struct drm_connector_state *connector_state);
 };
-typedef struct drm_connector_helper_funcs __no_const drm_connector_helper_funcs_no_const;
 
 /**
  * drm_connector_helper_add - sets the helper vtable for a connector

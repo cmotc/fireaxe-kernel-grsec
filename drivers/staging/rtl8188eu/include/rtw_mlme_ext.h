@@ -11,11 +11,6 @@
  * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
- *
  ******************************************************************************/
 #ifndef __RTW_MLME_EXT_H_
 #define __RTW_MLME_EXT_H_
@@ -409,7 +404,7 @@ struct p2p_oper_class_map {
 struct mlme_ext_priv {
 	struct adapter	*padapter;
 	u8	mlmeext_init;
-	atomic_unchecked_t	event_seq;
+	atomic_t	event_seq;
 	u16	mgnt_seq;
 
 	unsigned char	cur_channel;
@@ -555,6 +550,8 @@ void report_add_sta_event(struct adapter *padapter, unsigned char *addr,
 
 void beacon_timing_control(struct adapter *padapter);
 u8 set_tx_beacon_cmd(struct adapter *padapter);
+unsigned int setup_beacon_frame(struct adapter *padapter,
+				unsigned char *beacon_frame);
 void update_mgnt_tx_rate(struct adapter *padapter, u8 rate);
 void update_mgntframe_attrib(struct adapter *padapter,
 			     struct pkt_attrib *pattrib);
@@ -602,6 +599,12 @@ struct cmd_hdl {
 	u8 (*h2cfuns)(struct adapter  *padapter, u8 *pbuf);
 };
 
+u8 read_macreg_hdl(struct adapter *padapter, u8 *pbuf);
+u8 write_macreg_hdl(struct adapter *padapter, u8 *pbuf);
+u8 read_bbreg_hdl(struct adapter *padapter, u8 *pbuf);
+u8 write_bbreg_hdl(struct adapter *padapter, u8 *pbuf);
+u8 read_rfreg_hdl(struct adapter *padapter, u8 *pbuf);
+u8 write_rfreg_hdl(struct adapter *padapter, u8 *pbuf);
 u8 join_cmd_hdl(struct adapter *padapter, u8 *pbuf);
 u8 disconnect_hdl(struct adapter *padapter, u8 *pbuf);
 u8 createbss_hdl(struct adapter *padapter, u8 *pbuf);
@@ -610,6 +613,8 @@ u8 sitesurvey_cmd_hdl(struct adapter *padapter, u8 *pbuf);
 u8 setauth_hdl(struct adapter *padapter, u8 *pbuf);
 u8 setkey_hdl(struct adapter *padapter, u8 *pbuf);
 u8 set_stakey_hdl(struct adapter *padapter, u8 *pbuf);
+u8 set_assocsta_hdl(struct adapter *padapter, u8 *pbuf);
+u8 del_assocsta_hdl(struct adapter *padapter, u8 *pbuf);
 u8 add_ba_hdl(struct adapter *padapter, unsigned char *pbuf);
 
 u8 mlme_evt_hdl(struct adapter *padapter, unsigned char *pbuf);

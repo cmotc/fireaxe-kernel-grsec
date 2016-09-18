@@ -5,7 +5,7 @@
 #include <linux/fs.h>
 #include <linux/inet.h>
 #include <linux/in6.h>
-#include <linux/key-type.h>
+#include <linux/key.h>
 #include <keys/ceph-type.h>
 #include <linux/module.h>
 #include <linux/mount.h>
@@ -651,7 +651,7 @@ EXPORT_SYMBOL(ceph_destroy_client);
 /*
  * true if we have the mon map (and have thus joined the cluster)
  */
-static int have_mon_and_osd_map(struct ceph_client *client)
+static bool have_mon_and_osd_map(struct ceph_client *client)
 {
 	return client->monc.monmap && client->monc.monmap->epoch &&
 	       client->osdc.osdmap && client->osdc.osdmap->epoch;

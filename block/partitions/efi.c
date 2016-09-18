@@ -293,14 +293,14 @@ static gpt_entry *alloc_read_gpt_entries(struct parsed_partitions *state,
 	if (!gpt)
 		return NULL;
 
-	if (!le32_to_cpu(gpt->num_partition_entries))
+	count = le32_to_cpu(gpt->num_partition_entries) *
+                le32_to_cpu(gpt->sizeof_partition_entry);
+	if (!count)
 		return NULL;
-	pte = kcalloc(le32_to_cpu(gpt->num_partition_entries), le32_to_cpu(gpt->sizeof_partition_entry), GFP_KERNEL);
+	pte = kmalloc(count, GFP_KERNEL);
 	if (!pte)
 		return NULL;
 
-	count = le32_to_cpu(gpt->num_partition_entries) *
-                le32_to_cpu(gpt->sizeof_partition_entry);
 	if (read_lba(state, le64_to_cpu(gpt->partition_entry_lba),
 			(u8 *) pte, count) < count) {
 		kfree(pte);
@@ -430,7 +430,7 @@ static int is_gpt_valid(struct parsed_partitions *state, u64 lba,
 	}
 	/* Check that sizeof_partition_entry has the correct value */
 	if (le32_to_cpu((*gpt)->sizeof_partition_entry) != sizeof(gpt_entry)) {
-		pr_debug("GUID Partitition Entry Size check failed.\n");
+		pr_debug("GUID Partition Entry Size check failed.\n");
 		goto fail;
 	}
 
@@ -443,7 +443,7 @@ static int is_gpt_valid(struct parsed_partitions *state, u64 lba,
 			le32_to_cpu((*gpt)->sizeof_partition_entry));
 
 	if (crc != le32_to_cpu((*gpt)->partition_entry_array_crc32)) {
-		pr_debug("GUID Partitition Entry Array CRC check failed.\n");
+		pr_debug("GUID Partition Entry Array CRC check failed.\n");
 		goto fail_ptes;
 	}
 

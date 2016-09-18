@@ -470,11 +470,6 @@ fail:
 	return ret;
 }
 
-static int readpage_filler(struct file *data, struct page *page)
-{
-	return readpage_strip(data, page);
-}
-
 static int exofs_readpages(struct file *file, struct address_space *mapping,
 			   struct list_head *pages, unsigned nr_pages)
 {
@@ -483,7 +478,7 @@ static int exofs_readpages(struct file *file, struct address_space *mapping,
 
 	_pcol_init(&pcol, nr_pages, mapping->host);
 
-	ret = read_cache_pages(mapping, pages, readpage_filler, &pcol);
+	ret = read_cache_pages(mapping, pages, readpage_strip, &pcol);
 	if (ret) {
 		EXOFS_ERR("read_cache_pages => %d\n", ret);
 		return ret;
@@ -965,8 +960,7 @@ static void exofs_invalidatepage(struct page *page, unsigned int offset,
 
 
  /* TODO: Should be easy enough to do proprly */
-static ssize_t exofs_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
-			       loff_t offset)
+static ssize_t exofs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 {
 	return 0;
 }

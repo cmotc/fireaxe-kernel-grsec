@@ -52,7 +52,7 @@ static void ircomm_tty_getvalue_confirm(int result, __u16 obj_id,
 					struct ias_value *value, void *priv);
 static void ircomm_tty_start_watchdog_timer(struct ircomm_tty_cb *self,
 					    int timeout);
-static void ircomm_tty_watchdog_timer_expired(unsigned long data);
+static void ircomm_tty_watchdog_timer_expired(void *data);
 
 static int ircomm_tty_state_idle(struct ircomm_tty_cb *self,
 				 IRCOMM_TTY_EVENT event,
@@ -597,7 +597,7 @@ static void ircomm_tty_start_watchdog_timer(struct ircomm_tty_cb *self,
  *    Called when the connect procedure have taken to much time.
  *
  */
-static void ircomm_tty_watchdog_timer_expired(unsigned long data)
+static void ircomm_tty_watchdog_timer_expired(void *data)
 {
 	struct ircomm_tty_cb *self = (struct ircomm_tty_cb *) data;
 
@@ -968,7 +968,7 @@ static int ircomm_tty_state_ready(struct ircomm_tty_cb *self,
 		ircomm_tty_next_state(self, IRCOMM_TTY_SEARCH);
 		ircomm_tty_start_watchdog_timer(self, 3*HZ);
 
-		if (self->port.flags & ASYNC_CHECK_CD) {
+		if (tty_port_check_carrier(&self->port)) {
 			/* Drop carrier */
 			self->settings.dce = IRCOMM_DELTA_CD;
 			ircomm_tty_check_modem_status(self);

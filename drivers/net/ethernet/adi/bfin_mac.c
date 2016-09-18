@@ -1123,7 +1123,7 @@ static void tx_reclaim_skb_timeout(unsigned long lp)
 	tx_reclaim_skb((struct bfin_mac_local *)lp);
 }
 
-static netdev_tx_t bfin_mac_hard_start_xmit(struct sk_buff *skb,
+static int bfin_mac_hard_start_xmit(struct sk_buff *skb,
 				struct net_device *dev)
 {
 	struct bfin_mac_local *lp = netdev_priv(dev);
@@ -1430,7 +1430,7 @@ static void bfin_mac_timeout(struct net_device *dev)
 	bfin_mac_enable(lp->phydev);
 
 	/* We can accept TX packets again */
-	dev->trans_start = jiffies; /* prevent tx timeout */
+	netif_trans_update(dev); /* prevent tx timeout */
 }
 
 static void bfin_mac_multicast_hash(struct net_device *dev)

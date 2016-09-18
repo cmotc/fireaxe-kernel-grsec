@@ -24,6 +24,7 @@
 #include <linux/jiffies.h>
 #include <linux/pm_runtime.h>
 #include <linux/of.h>
+#include <linux/of_net.h>
 
 #include "net-sysfs.h"
 
@@ -289,7 +290,7 @@ static ssize_t carrier_changes_show(struct device *dev,
 {
 	struct net_device *netdev = to_net_dev(dev);
 	return sprintf(buf, fmt_dec,
-		       atomic_read_unchecked(&netdev->carrier_changes));
+		       atomic_read(&netdev->carrier_changes));
 }
 static DEVICE_ATTR_RO(carrier_changes);
 

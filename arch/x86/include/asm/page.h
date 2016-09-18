@@ -37,7 +37,10 @@ static inline void copy_user_page(void *to, void *from, unsigned long vaddr,
 	alloc_page_vma(GFP_HIGHUSER | __GFP_ZERO | movableflags, vma, vaddr)
 #define __HAVE_ARCH_ALLOC_ZEROED_USER_HIGHPAGE
 
+#ifndef __pa
 #define __pa(x)		__phys_addr((unsigned long)(x))
+#endif
+
 #define __pa_nodebug(x)	__phys_addr_nodebug((unsigned long)(x))
 /* __pa_symbol should be used for C visible symbols.
    This seems to be the official gcc blessed way to do such arithmetic. */
@@ -51,8 +54,9 @@ static inline void copy_user_page(void *to, void *from, unsigned long vaddr,
 #define __pa_symbol(x) \
 	__phys_addr_symbol(__phys_reloc_hide((unsigned long)(x)))
 
+#ifndef __va
 #define __va(x)			((void *)((unsigned long)(x)+PAGE_OFFSET))
-#define __early_va(x)		((void *)((unsigned long)(x)+__START_KERNEL_map - phys_base))
+#endif
 
 #define __boot_va(x)		__va(x)
 #define __boot_pa(x)		__pa(x)
@@ -61,20 +65,10 @@ static inline void copy_user_page(void *to, void *from, unsigned long vaddr,
  * virt_to_page(kaddr) returns a valid pointer if and only if
  * virt_addr_valid(kaddr) returns true.
  */
+#define virt_to_page(kaddr)	pfn_to_page(__pa(kaddr) >> PAGE_SHIFT)
 #define pfn_to_kaddr(pfn)      __va((pfn) << PAGE_SHIFT)
 extern bool __virt_addr_valid(unsigned long kaddr);
 #define virt_addr_valid(kaddr)	__virt_addr_valid((unsigned long) (kaddr))
-
-#ifdef CONFIG_GRKERNSEC_KSTACKOVERFLOW
-#define virt_to_page(kaddr)	\
-	({ \
-		const void *__kaddr = (const void *)(kaddr); \
-		BUG_ON(!virt_addr_valid(__kaddr)); \
-		pfn_to_page(__pa(__kaddr) >> PAGE_SHIFT); \
-	})
-#else
-#define virt_to_page(kaddr)	pfn_to_page(__pa(kaddr) >> PAGE_SHIFT)
-#endif
 
 #endif	/* __ASSEMBLY__ */
 

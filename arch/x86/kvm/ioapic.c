@@ -413,8 +413,6 @@ static void kvm_ioapic_eoi_inject_work(struct work_struct *work)
 #define IOAPIC_SUCCESSIVE_IRQ_MAX_COUNT 10000
 
 static void __kvm_ioapic_update_eoi(struct kvm_vcpu *vcpu,
-			struct kvm_ioapic *ioapic, int vector, int trigger_mode) __must_hold(&ioapic->lock);
-static void __kvm_ioapic_update_eoi(struct kvm_vcpu *vcpu,
 			struct kvm_ioapic *ioapic, int vector, int trigger_mode)
 {
 	struct dest_map *dest_map = &ioapic->rtc_status.dest_map;
@@ -445,7 +443,7 @@ static void __kvm_ioapic_update_eoi(struct kvm_vcpu *vcpu,
 		spin_lock(&ioapic->lock);
 
 		if (trigger_mode != IOAPIC_LEVEL_TRIG ||
-		    kvm_apic_get_reg(apic, APIC_SPIV) & APIC_SPIV_DIRECTED_EOI)
+		    kvm_lapic_get_reg(apic, APIC_SPIV) & APIC_SPIV_DIRECTED_EOI)
 			continue;
 
 		ASSERT(ent->fields.trig_mode == IOAPIC_LEVEL_TRIG);

@@ -19,7 +19,6 @@
 #include <asm/msr.h>
 #include <asm/apic.h>
 #include <asm/nmi.h>
-#include <asm/pgtable.h>
 
 #include "op_x86_model.h"
 #include "op_counter.h"
@@ -76,7 +75,7 @@ static void ppro_setup_ctrs(struct op_x86_model_spec const *model,
 	u64 val;
 	int i;
 
-	if (cpu_has_arch_perfmon) {
+	if (boot_cpu_has(X86_FEATURE_ARCH_PERFMON)) {
 		union cpuid10_eax eax;
 		eax.full = cpuid_eax(0xa);
 
@@ -222,10 +221,8 @@ static void arch_perfmon_setup_counters(void)
 
 	num_counters = min((int)eax.split.num_counters, OP_MAX_COUNTER);
 
-	pax_open_kernel();
-	const_cast(op_arch_perfmon_spec.num_counters) = num_counters;
-	const_cast(op_arch_perfmon_spec.num_controls) = num_counters;
-	pax_close_kernel();
+	op_arch_perfmon_spec.num_counters = num_counters;
+	op_arch_perfmon_spec.num_controls = num_counters;
 }
 
 static int arch_perfmon_init(struct oprofile_operations *ignore)

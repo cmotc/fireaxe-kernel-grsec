@@ -189,7 +189,6 @@ hugetlb_get_unmapped_area_new_pmd(unsigned long len)
 	info.high_limit = TASK_SIZE;
 	info.align_mask = PAGE_MASK & HUGEPT_MASK;
 	info.align_offset = 0;
-	info.threadstack_offset = 0;
 	return vm_unmapped_area(&info);
 }
 
@@ -240,6 +239,7 @@ static __init int setup_hugepagesz(char *opt)
 	if (ps == (1 << HPAGE_SHIFT)) {
 		hugetlb_add_hstate(HPAGE_SHIFT - PAGE_SHIFT);
 	} else {
+		hugetlb_bad_size();
 		pr_err("hugepagesz: Unsupported page size %lu M\n",
 		       ps >> 20);
 		return 0;

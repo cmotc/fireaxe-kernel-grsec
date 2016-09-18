@@ -21,7 +21,6 @@ static inline void __pgd_populate(pgd_t *pgd, pud_t *pud)
 }
 
 #define pgd_populate(MM, PGD, PUD)	__pgd_populate(PGD, PUD)
-#define pgd_populate_kernel(MM, PGD, PMD)	pgd_populate((MM), (PGD), (PMD))
 
 static inline pgd_t *pgd_alloc(struct mm_struct *mm)
 {
@@ -39,12 +38,10 @@ static inline void __pud_populate(pud_t *pud, pmd_t *pmd)
 }
 
 #define pud_populate(MM, PUD, PMD)	__pud_populate(PUD, PMD)
-#define pud_populate_kernel(MM, PUD, PMD)	pud_populate((MM), (PUD), (PMD))
 
 static inline pud_t *pud_alloc_one(struct mm_struct *mm, unsigned long addr)
 {
-	return kmem_cache_alloc(pgtable_cache,
-				GFP_KERNEL|__GFP_REPEAT);
+	return kmem_cache_alloc(pgtable_cache, GFP_KERNEL);
 }
 
 static inline void pud_free(struct mm_struct *mm, pud_t *pud)
@@ -54,8 +51,7 @@ static inline void pud_free(struct mm_struct *mm, pud_t *pud)
 
 static inline pmd_t *pmd_alloc_one(struct mm_struct *mm, unsigned long addr)
 {
-	return kmem_cache_alloc(pgtable_cache,
-				GFP_KERNEL|__GFP_REPEAT);
+	return kmem_cache_alloc(pgtable_cache, GFP_KERNEL);
 }
 
 static inline void pmd_free(struct mm_struct *mm, pmd_t *pmd)

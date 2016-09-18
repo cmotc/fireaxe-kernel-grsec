@@ -476,7 +476,7 @@ static void w90p910_reset_mac(struct net_device *dev)
 
 	w90p910_init_desc(dev);
 
-	dev->trans_start = jiffies; /* prevent tx timeout */
+	netif_trans_update(dev); /* prevent tx timeout */
 	ether->cur_tx = 0x0;
 	ether->finish_tx = 0x0;
 	ether->cur_rx = 0x0;
@@ -490,7 +490,7 @@ static void w90p910_reset_mac(struct net_device *dev)
 	w90p910_trigger_tx(dev);
 	w90p910_trigger_rx(dev);
 
-	dev->trans_start = jiffies; /* prevent tx timeout */
+	netif_trans_update(dev); /* prevent tx timeout */
 
 	if (netif_queue_stopped(dev))
 		netif_wake_queue(dev);
@@ -633,7 +633,7 @@ static int w90p910_send_frame(struct net_device *dev,
 	return 0;
 }
 
-static netdev_tx_t w90p910_ether_start_xmit(struct sk_buff *skb, struct net_device *dev)
+static int w90p910_ether_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct w90p910_ether *ether = netdev_priv(dev);
 

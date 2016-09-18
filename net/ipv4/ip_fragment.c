@@ -204,14 +204,14 @@ static void ip_expire(unsigned long arg)
 		goto out;
 
 	ipq_kill(qp);
-	IP_INC_STATS_BH(net, IPSTATS_MIB_REASMFAILS);
+	__IP_INC_STATS(net, IPSTATS_MIB_REASMFAILS);
 
 	if (!inet_frag_evicting(&qp->q)) {
 		struct sk_buff *head = qp->q.fragments;
 		const struct iphdr *iph;
 		int err;
 
-		IP_INC_STATS_BH(net, IPSTATS_MIB_REASMTIMEOUT);
+		__IP_INC_STATS(net, IPSTATS_MIB_REASMTIMEOUT);
 
 		if (!(qp->q.flags & INET_FRAG_FIRST_IN) || !qp->q.fragments)
 			goto out;
@@ -282,7 +282,7 @@ static int ip_frag_too_far(struct ipq *qp)
 		return 0;
 
 	start = qp->rid;
-	end = atomic_inc_return_unchecked(&peer->rid);
+	end = atomic_inc_return(&peer->rid);
 	qp->rid = end;
 
 	rc = qp->q.fragments && (end - start) > max;
@@ -291,7 +291,7 @@ static int ip_frag_too_far(struct ipq *qp)
 		struct net *net;
 
 		net = container_of(qp->q.net, struct net, ipv4.frags);
-		IP_INC_STATS_BH(net, IPSTATS_MIB_REASMFAILS);
+		__IP_INC_STATS(net, IPSTATS_MIB_REASMFAILS);
 	}
 
 	return rc;
@@ -635,7 +635,7 @@ static int ip_frag_reasm(struct ipq *qp, struct sk_buff *prev,
 
 	ip_send_check(iph);
 
-	IP_INC_STATS_BH(net, IPSTATS_MIB_REASMOKS);
+	__IP_INC_STATS(net, IPSTATS_MIB_REASMOKS);
 	qp->q.fragments = NULL;
 	qp->q.fragments_tail = NULL;
 	return 0;
@@ -647,7 +647,7 @@ out_nomem:
 out_oversize:
 	net_info_ratelimited("Oversized IP packet from %pI4\n", &qp->saddr);
 out_fail:
-	IP_INC_STATS_BH(net, IPSTATS_MIB_REASMFAILS);
+	__IP_INC_STATS(net, IPSTATS_MIB_REASMFAILS);
 	return err;
 }
 
@@ -658,7 +658,7 @@ int ip_defrag(struct net *net, struct sk_buff *skb, u32 user)
 	int vif = l3mdev_master_ifindex_rcu(dev);
 	struct ipq *qp;
 
-	IP_INC_STATS_BH(net, IPSTATS_MIB_REASMREQDS);
+	__IP_INC_STATS(net, IPSTATS_MIB_REASMREQDS);
 	skb_orphan(skb);
 
 	/* Lookup (or create) queue header */
@@ -675,7 +675,7 @@ int ip_defrag(struct net *net, struct sk_buff *skb, u32 user)
 		return ret;
 	}
 
-	IP_INC_STATS_BH(net, IPSTATS_MIB_REASMFAILS);
+	__IP_INC_STATS(net, IPSTATS_MIB_REASMFAILS);
 	kfree_skb(skb);
 	return -ENOMEM;
 }
@@ -773,11 +773,12 @@ static struct ctl_table ip4_frags_ctl_table[] = {
 
 static int __net_init ip4_frags_ns_ctl_register(struct net *net)
 {
-	ctl_table_no_const *table = NULL;
+	struct ctl_table *table;
 	struct ctl_table_header *hdr;
 
+	table = ip4_frags_ns_ctl_table;
 	if (!net_eq(net, &init_net)) {
-		table = kmemdup(ip4_frags_ns_ctl_table, sizeof(ip4_frags_ns_ctl_table), GFP_KERNEL);
+		table = kmemdup(table, sizeof(ip4_frags_ns_ctl_table), GFP_KERNEL);
 		if (!table)
 			goto err_alloc;
 
@@ -788,10 +789,9 @@ static int __net_init ip4_frags_ns_ctl_register(struct net *net)
 		table[1].extra2 = &net->ipv4.frags.high_thresh;
 		table[2].data = &net->ipv4.frags.timeout;
 		table[3].data = &net->ipv4.frags.max_dist;
-		hdr = register_net_sysctl(net, "net/ipv4", table);
-	} else
-		hdr = register_net_sysctl(net, "net/ipv4", ip4_frags_ns_ctl_table);
- 
+	}
+
+	hdr = register_net_sysctl(net, "net/ipv4", table);
 	if (!hdr)
 		goto err_reg;
 
@@ -799,7 +799,8 @@ static int __net_init ip4_frags_ns_ctl_register(struct net *net)
 	return 0;
 
 err_reg:
-	kfree(table);
+	if (!net_eq(net, &init_net))
+		kfree(table);
 err_alloc:
 	return -ENOMEM;
 }

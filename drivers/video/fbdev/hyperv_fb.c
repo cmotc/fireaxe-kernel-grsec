@@ -240,7 +240,7 @@ static uint screen_fb_size;
 static inline int synthvid_send(struct hv_device *hdev,
 				struct synthvid_msg *msg)
 {
-	static atomic64_unchecked_t request_id = ATOMIC64_INIT(0);
+	static atomic64_t request_id = ATOMIC64_INIT(0);
 	int ret;
 
 	msg->pipe_hdr.type = PIPE_MSG_DATA;
@@ -248,7 +248,7 @@ static inline int synthvid_send(struct hv_device *hdev,
 
 	ret = vmbus_sendpacket(hdev->channel, msg,
 			       msg->vid_hdr.size + sizeof(struct pipe_msg_hdr),
-			       atomic64_inc_return_unchecked(&request_id),
+			       atomic64_inc_return(&request_id),
 			       VM_PKT_DATA_INBAND, 0);
 
 	if (ret)
@@ -743,7 +743,7 @@ static int hvfb_getmem(struct hv_device *hdev, struct fb_info *info)
 err3:
 	iounmap(fb_virt);
 err2:
-	release_mem_region(par->mem->start, screen_fb_size);
+	vmbus_free_mmio(par->mem->start, screen_fb_size);
 	par->mem = NULL;
 err1:
 	if (!gen2vm)
@@ -758,7 +758,7 @@ static void hvfb_putmem(struct fb_info *info)
 	struct hvfb_par *par = info->par;
 
 	iounmap(info->screen_base);
-	release_mem_region(par->mem->start, screen_fb_size);
+	vmbus_free_mmio(par->mem->start, screen_fb_size);
 	par->mem = NULL;
 }
 

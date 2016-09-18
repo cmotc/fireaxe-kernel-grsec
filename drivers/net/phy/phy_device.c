@@ -411,7 +411,7 @@ static int get_phy_c45_devs_in_pkg(struct mii_bus *bus, int addr, int dev_addr,
  *   zero on success.
  *
  */
-static int get_phy_c45_ids(struct mii_bus *bus, int addr, int *phy_id,
+static int get_phy_c45_ids(struct mii_bus *bus, int addr, u32 *phy_id,
 			   struct phy_c45_device_ids *c45_ids) {
 	int phy_reg;
 	int i, reg_addr;
@@ -482,7 +482,7 @@ static int get_phy_c45_ids(struct mii_bus *bus, int addr, int *phy_id,
  *   its return value is in turn returned.
  *
  */
-static int get_phy_id(struct mii_bus *bus, int addr, int *phy_id,
+static int get_phy_id(struct mii_bus *bus, int addr, u32 *phy_id,
 		      bool is_c45, struct phy_c45_device_ids *c45_ids)
 {
 	int phy_reg;
@@ -520,7 +520,7 @@ static int get_phy_id(struct mii_bus *bus, int addr, int *phy_id,
 struct phy_device *get_phy_device(struct mii_bus *bus, int addr, bool is_c45)
 {
 	struct phy_c45_device_ids c45_ids = {0};
-	int phy_id = 0;
+	u32 phy_id = 0;
 	int r;
 
 	r = get_phy_id(bus, addr, &phy_id, is_c45, &c45_ids);
@@ -529,7 +529,7 @@ struct phy_device *get_phy_device(struct mii_bus *bus, int addr, bool is_c45)
 
 	/* If the phy_id is mostly Fs, there is no device there */
 	if ((phy_id & 0x1fffffff) == 0x1fffffff)
-		return NULL;
+		return ERR_PTR(-ENODEV);
 
 	return phy_device_create(bus, addr, phy_id, is_c45, &c45_ids);
 }
@@ -1123,8 +1123,9 @@ static int genphy_config_advert(struct phy_device *phydev)
  */
 int genphy_setup_forced(struct phy_device *phydev)
 {
-	int ctl = 0;
+	int ctl = phy_read(phydev, MII_BMCR);
 
+	ctl &= BMCR_LOOPBACK | BMCR_ISOLATE | BMCR_PDOWN;
 	phydev->pause = 0;
 	phydev->asym_pause = 0;
 

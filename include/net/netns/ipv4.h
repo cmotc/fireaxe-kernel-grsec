@@ -119,7 +119,7 @@ struct netns_ipv4 {
 
 	struct ping_group_range ping_group_range;
 
-	atomic_unchecked_t dev_addr_genid;
+	atomic_t dev_addr_genid;
 
 #ifdef CONFIG_SYSCTL
 	unsigned long *sysctl_local_reserved_ports;
@@ -133,6 +133,9 @@ struct netns_ipv4 {
 	struct fib_rules_ops	*mr_rules_ops;
 #endif
 #endif
-	atomic_unchecked_t	rt_genid;
+#ifdef CONFIG_IP_ROUTE_MULTIPATH
+	int sysctl_fib_multipath_use_neigh;
+#endif
+	atomic_t	rt_genid;
 };
 #endif

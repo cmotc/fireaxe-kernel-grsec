@@ -104,7 +104,7 @@ enum si_intf_state {
 #define IPMI_BT_INTMASK_ENABLE_IRQ_BIT	1
 
 enum si_type {
-    SI_KCS, SI_SMIC, SI_BT
+	SI_KCS, SI_SMIC, SI_BT
 };
 
 static const char * const si_to_str[] = { "kcs", "smic", "bt" };
@@ -302,7 +302,7 @@ struct smi_info {
 	unsigned char slave_addr;
 
 	/* Counters and things for the proc filesystem. */
-	atomic_unchecked_t stats[SI_NUM_STATS];
+	atomic_t stats[SI_NUM_STATS];
 
 	struct task_struct *thread;
 
@@ -311,9 +311,9 @@ struct smi_info {
 };
 
 #define smi_inc_stat(smi, stat) \
-	atomic_inc_unchecked(&(smi)->stats[SI_STAT_ ## stat])
+	atomic_inc(&(smi)->stats[SI_STAT_ ## stat])
 #define smi_get_stat(smi, stat) \
-	((unsigned int) atomic_read_unchecked(&(smi)->stats[SI_STAT_ ## stat]))
+	((unsigned int) atomic_read(&(smi)->stats[SI_STAT_ ## stat]))
 
 #define SI_MAX_PARMS 4
 
@@ -410,7 +410,7 @@ static enum si_sm_result start_next_msg(struct smi_info *smi_info)
 
 		rv = SI_SM_CALL_WITHOUT_DELAY;
 	}
- out:
+out:
 	return rv;
 }
 
@@ -539,7 +539,7 @@ static struct ipmi_smi_msg *alloc_msg_handle_irq(struct smi_info *smi_info)
 
 static void handle_flags(struct smi_info *smi_info)
 {
- retry:
+retry:
 	if (smi_info->msg_flags & WDT_PRE_TIMEOUT_INT) {
 		/* Watchdog pre-timeout */
 		smi_inc_stat(smi_info, watchdog_pretimeouts);
@@ -831,7 +831,7 @@ static enum si_sm_result smi_event_handler(struct smi_info *smi_info,
 {
 	enum si_sm_result si_sm_result;
 
- restart:
+restart:
 	/*
 	 * There used to be a loop here that waited a little while
 	 * (around 25us) before giving up.  That turned out to be
@@ -944,7 +944,7 @@ static enum si_sm_result smi_event_handler(struct smi_info *smi_info,
 			smi_info->timer_running = false;
 	}
 
- out:
+out:
 	return si_sm_result;
 }
 
@@ -1190,7 +1190,7 @@ static void smi_timeout(unsigned long data)
 		timeout = jiffies + SI_TIMEOUT_JIFFIES;
 	}
 
- do_mod_timer:
+do_mod_timer:
 	if (smi_result != SI_SM_IDLE)
 		smi_mod_timer(smi_info, timeout);
 	else
@@ -1345,7 +1345,7 @@ static unsigned int num_slave_addrs;
 #define IPMI_MEM_ADDR_SPACE 1
 static const char * const addr_space_to_str[] = { "i/o", "mem" };
 
-static int hotmod_handler(const char *val, const struct kernel_param *kp);
+static int hotmod_handler(const char *val, struct kernel_param *kp);
 
 module_param_call(hotmod, hotmod_handler, NULL, NULL, 0200);
 MODULE_PARM_DESC(hotmod, "Add and remove interfaces.  See"
@@ -1576,10 +1576,9 @@ static int port_setup(struct smi_info *info)
 		if (request_region(addr + idx * info->io.regspacing,
 				   info->io.regsize, DEVICE_NAME) == NULL) {
 			/* Undo allocations */
-			while (idx--) {
+			while (idx--)
 				release_region(addr + idx * info->io.regspacing,
 					       info->io.regsize);
-			}
 			return -EIO;
 		}
 	}
@@ -1638,25 +1637,28 @@ static void mem_outq(const struct si_sm_io *io, unsigned int offset,
 }
 #endif
 
-static void mem_cleanup(struct smi_info *info)
+static void mem_region_cleanup(struct smi_info *info, int num)
 {
 	unsigned long addr = info->io.addr_data;
-	int           mapsize;
+	int idx;
 
+	for (idx = 0; idx < num; idx++)
+		release_mem_region(addr + idx * info->io.regspacing,
+				   info->io.regsize);
+}
+
+static void mem_cleanup(struct smi_info *info)
+{
 	if (info->io.addr) {
 		iounmap(info->io.addr);
-
-		mapsize = ((info->io_size * info->io.regspacing)
-			   - (info->io.regspacing - info->io.regsize));
-
-		release_mem_region(addr, mapsize);
+		mem_region_cleanup(info, info->io_size);
 	}
 }
 
 static int mem_setup(struct smi_info *info)
 {
 	unsigned long addr = info->io.addr_data;
-	int           mapsize;
+	int           mapsize, idx;
 
 	if (!addr)
 		return -ENODEV;
@@ -1693,6 +1695,21 @@ static int mem_setup(struct smi_info *info)
 	}
 
 	/*
+	 * Some BIOSes reserve disjoint memory regions in their ACPI
+	 * tables.  This causes problems when trying to request the
+	 * entire region.  Therefore we must request each register
+	 * separately.
+	 */
+	for (idx = 0; idx < info->io_size; idx++) {
+		if (request_mem_region(addr + idx * info->io.regspacing,
+				       info->io.regsize, DEVICE_NAME) == NULL) {
+			/* Undo allocations */
+			mem_region_cleanup(info, idx);
+			return -EIO;
+		}
+	}
+
+	/*
 	 * Calculate the total amount of memory to claim.  This is an
 	 * unusual looking calculation, but it avoids claiming any
 	 * more memory than it has to.  It will claim everything
@@ -1701,13 +1718,9 @@ static int mem_setup(struct smi_info *info)
 	 */
 	mapsize = ((info->io_size * info->io.regspacing)
 		   - (info->io.regspacing - info->io.regsize));
-
-	if (request_mem_region(addr, mapsize, DEVICE_NAME) == NULL)
-		return -EIO;
-
 	info->io.addr = ioremap(addr, mapsize);
 	if (info->io.addr == NULL) {
-		release_mem_region(addr, mapsize);
+		mem_region_cleanup(info, info->io_size);
 		return -EIO;
 	}
 	return 0;
@@ -1806,7 +1819,7 @@ static struct smi_info *smi_info_alloc(void)
 	return info;
 }
 
-static int hotmod_handler(const char *val, const struct kernel_param *kp)
+static int hotmod_handler(const char *val, struct kernel_param *kp)
 {
 	char *str = kstrdup(val, GFP_KERNEL);
 	int  rv;
@@ -1975,7 +1988,7 @@ static int hotmod_handler(const char *val, const struct kernel_param *kp)
 		}
 	}
 	rv = len;
- out:
+out:
 	kfree(str);
 	return rv;
 }
@@ -2945,7 +2958,7 @@ static int try_get_dev_id(struct smi_info *smi_info)
 	/* Check and record info from the get device id, in case we need it. */
 	rv = ipmi_demangle_device_id(resp, resp_len, &smi_info->device_id);
 
- out:
+out:
 	kfree(resp);
 	return rv;
 }
@@ -3192,7 +3205,7 @@ static int try_enable_event_buffer(struct smi_info *smi_info)
 	else
 		smi_info->supports_event_msg_buff = true;
 
- out:
+out:
 	kfree(resp);
 	return rv;
 }
@@ -3626,7 +3639,7 @@ static int try_smi_init(struct smi_info *new_smi)
 	atomic_set(&new_smi->req_events, 0);
 	new_smi->run_to_completion = false;
 	for (i = 0; i < SI_NUM_STATS; i++)
-		atomic_set_unchecked(&new_smi->stats[i], 0);
+		atomic_set(&new_smi->stats[i], 0);
 
 	new_smi->interrupt_disabled = true;
 	atomic_set(&new_smi->need_watch, 0);
@@ -3718,10 +3731,10 @@ static int try_smi_init(struct smi_info *new_smi)
 
 	return 0;
 
- out_err_stop_timer:
+out_err_stop_timer:
 	wait_for_timer_and_thread(new_smi);
 
- out_err:
+out_err:
 	new_smi->interrupt_disabled = true;
 
 	if (new_smi->intf) {

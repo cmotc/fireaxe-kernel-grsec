@@ -18,25 +18,14 @@ struct random_ready_callback {
 };
 
 extern void add_device_randomness(const void *, unsigned int);
-
-#if defined(LATENT_ENTROPY_PLUGIN) && !defined(__CHECKER__)
-static inline void add_latent_entropy(void)
-{
-	add_device_randomness((const void *)&latent_entropy, sizeof(latent_entropy));
-}
-#else
-static inline void add_latent_entropy(void) {}
-#endif
-
 extern void add_input_randomness(unsigned int type, unsigned int code,
-				 unsigned int value) __latent_entropy;
-extern void add_interrupt_randomness(int irq, int irq_flags) __latent_entropy;
+				 unsigned int value);
+extern void add_interrupt_randomness(int irq, int irq_flags);
 
 extern void get_random_bytes(void *buf, int nbytes);
 extern int add_random_ready_callback(struct random_ready_callback *rdy);
 extern void del_random_ready_callback(struct random_ready_callback *rdy);
 extern void get_random_bytes_arch(void *buf, int nbytes);
-void generate_random_uuid(unsigned char uuid_out[16]);
 extern int random_int_secret_init(void);
 
 #ifndef MODULE
@@ -63,11 +52,6 @@ void prandom_seed_full_state(struct rnd_state __percpu *pcpu_state);
 #define prandom_init_once(pcpu_state)			\
 	DO_ONCE(prandom_seed_full_state, (pcpu_state))
 
-static inline unsigned long __intentional_overflow(-1) pax_get_random_long(void)
-{
-	return prandom_u32() + (sizeof(long) > 4 ? (unsigned long)prandom_u32() << 32 : 0);
-}
-
 /**
  * prandom_u32_max - returns a pseudo-random number in interval [0, ep_ro)
  * @ep_ro: right open interval endpoint
@@ -80,7 +64,7 @@ static inline unsigned long __intentional_overflow(-1) pax_get_random_long(void)
  *
  * Returns: pseudo-random number in interval [0, ep_ro)
  */
-static inline u32 __intentional_overflow(-1) prandom_u32_max(u32 ep_ro)
+static inline u32 prandom_u32_max(u32 ep_ro)
 {
 	return (u32)(((u64) prandom_u32() * ep_ro) >> 32);
 }

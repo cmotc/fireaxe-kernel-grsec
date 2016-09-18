@@ -334,7 +334,7 @@ struct kernfs_node *kernfs_get_parent(struct kernfs_node *kn)
  *
  *	Returns 31 bit hash of ns + name (so it fits in an off_t )
  */
-static unsigned int kernfs_name_hash(const unsigned char *name, const void *ns)
+static unsigned int kernfs_name_hash(const char *name, const void *ns)
 {
 	unsigned long hash = init_name_hash();
 	unsigned int len = strlen(name);
@@ -753,7 +753,8 @@ int kernfs_add_one(struct kernfs_node *kn)
 	ps_iattr = parent->iattr;
 	if (ps_iattr) {
 		struct iattr *ps_iattrs = &ps_iattr->ia_iattr;
-		ps_iattrs->ia_ctime = ps_iattrs->ia_mtime = CURRENT_TIME;
+		ktime_get_real_ts(&ps_iattrs->ia_ctime);
+		ps_iattrs->ia_mtime = ps_iattrs->ia_ctime;
 	}
 
 	mutex_unlock(&kernfs_mutex);
@@ -1073,12 +1074,6 @@ static int kernfs_iop_mkdir(struct inode *dir, struct dentry *dentry,
 	ret = scops->mkdir(parent, dentry->d_name.name, mode);
 
 	kernfs_put_active(parent);
-
-	if (!ret) {
-		struct dentry *dentry_ret = kernfs_iop_lookup(dir, dentry, 0);
-		ret = PTR_ERR_OR_ZERO(dentry_ret);
-	}
-
 	return ret;
 }
 
@@ -1285,8 +1280,9 @@ static void __kernfs_remove(struct kernfs_node *kn)
 
 			/* update timestamps on the parent */
 			if (ps_iattr) {
-				ps_iattr->ia_iattr.ia_ctime = CURRENT_TIME;
-				ps_iattr->ia_iattr.ia_mtime = CURRENT_TIME;
+				ktime_get_real_ts(&ps_iattr->ia_iattr.ia_ctime);
+				ps_iattr->ia_iattr.ia_mtime =
+					ps_iattr->ia_iattr.ia_ctime;
 			}
 
 			kernfs_put(pos);
@@ -1649,22 +1645,9 @@ static int kernfs_fop_readdir(struct file *file, struct dir_context *ctx)
 	return 0;
 }
 
-static loff_t kernfs_dir_fop_llseek(struct file *file, loff_t offset,
-				    int whence)
-{
-	struct inode *inode = file_inode(file);
-	loff_t ret;
-
-	inode_lock(inode);
-	ret = generic_file_llseek(file, offset, whence);
-	inode_unlock(inode);
-
-	return ret;
-}
-
 const struct file_operations kernfs_dir_fops = {
 	.read		= generic_read_dir,
-	.iterate	= kernfs_fop_readdir,
+	.iterate_shared	= kernfs_fop_readdir,
 	.release	= kernfs_dir_fop_release,
-	.llseek		= kernfs_dir_fop_llseek,
+	.llseek		= generic_file_llseek,
 };

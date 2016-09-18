@@ -45,7 +45,6 @@
 
 #include <asm/inst.h>
 #include <linux/linkage.h>
-#include <asm/alternative-asm.h>
 
 ## ISCSI CRC 32 Implementation with crc32 and pclmulqdq Instruction
 
@@ -310,7 +309,6 @@ do_return:
 	popq    %rsi
 	popq    %rdi
 	popq    %rbx
-	pax_force_retaddr
         ret
 ENDPROC(crc_pcl)
 

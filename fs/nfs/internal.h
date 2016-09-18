@@ -477,6 +477,7 @@ void nfs_mark_request_commit(struct nfs_page *req,
 			     u32 ds_commit_idx);
 int nfs_write_need_commit(struct nfs_pgio_header *);
 void nfs_writeback_update_inode(struct nfs_pgio_header *hdr);
+int nfs_commit_file(struct file *file, struct nfs_write_verifier *verf);
 int nfs_generic_commit_list(struct inode *inode, struct list_head *head,
 			    int how, struct nfs_commit_info *cinfo);
 void nfs_retry_commit(struct list_head *page_list,
@@ -608,10 +609,9 @@ unsigned long nfs_block_size(unsigned long bsize, unsigned char *nrbitsp)
 static inline
 void nfs_super_set_maxbytes(struct super_block *sb, __u64 maxfilesize)
 {
-	if (maxfilesize > MAX_LFS_FILESIZE || maxfilesize == 0)
+	sb->s_maxbytes = (loff_t)maxfilesize;
+	if (sb->s_maxbytes > MAX_LFS_FILESIZE || sb->s_maxbytes <= 0)
 		sb->s_maxbytes = MAX_LFS_FILESIZE;
-	else
-		sb->s_maxbytes = (loff_t)maxfilesize;
 }
 
 /*

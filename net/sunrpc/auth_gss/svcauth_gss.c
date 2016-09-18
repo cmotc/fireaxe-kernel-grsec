@@ -569,10 +569,9 @@ gss_svc_searchbyctx(struct cache_detail *cd, struct xdr_netobj *handle)
 	struct rsc *found;
 
 	memset(&rsci, 0, sizeof(rsci));
-	if (dup_to_netobj(&rsci.handle, handle->data, handle->len))
-		return NULL;
+	rsci.handle.data = handle->data;
+	rsci.handle.len = handle->len;
 	found = rsc_lookup(cd, &rsci);
-	rsc_free(&rsci);
 	if (!found)
 		return NULL;
 	if (cache_check(cd, &found->h, NULL))
@@ -1142,7 +1141,7 @@ static int gss_proxy_save_rsc(struct cache_detail *cd,
 				uint64_t *handle)
 {
 	struct rsc rsci, *rscp = NULL;
-	static atomic64_unchecked_t ctxhctr = ATOMIC64_INIT(0);
+	static atomic64_t ctxhctr;
 	long long ctxh;
 	struct gss_api_mech *gm = NULL;
 	time_t expiry;
@@ -1153,7 +1152,7 @@ static int gss_proxy_save_rsc(struct cache_detail *cd,
 	status = -ENOMEM;
 	/* the handle needs to be just a unique id,
 	 * use a static counter */
-	ctxh = atomic64_inc_return_unchecked(&ctxhctr);
+	ctxh = atomic64_inc_return(&ctxhctr);
 
 	/* make a copy for the caller */
 	*handle = ctxh;

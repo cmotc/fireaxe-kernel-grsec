@@ -1757,7 +1757,7 @@ err_out:
 }
 
 static pci_ers_result_t netxen_io_error_detected(struct pci_dev *pdev,
-						enum pci_channel_state state)
+						pci_channel_state_t state)
 {
 	struct netxen_adapter *adapter = pci_get_drvdata(pdev);
 
@@ -2286,7 +2286,7 @@ static void netxen_tx_timeout_task(struct work_struct *work)
 			goto request_reset;
 		}
 	}
-	adapter->netdev->trans_start = jiffies;
+	netif_trans_update(adapter->netdev);
 	rtnl_unlock();
 	return;
 

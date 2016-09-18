@@ -5,19 +5,13 @@
 
 typedef int word_type __attribute__ ((mode (__word__)));
 
-#ifdef CONFIG_64BIT
-typedef int DWtype __attribute__((mode(TI)));
-#else
-typedef long long DWtype;
-#endif
-
 #ifdef __BIG_ENDIAN
 struct DWstruct {
-	long high, low;
+	int high, low;
 };
 #elif defined(__LITTLE_ENDIAN)
 struct DWstruct {
-	long low, high;
+	int low, high;
 };
 #else
 #error I feel sick.
@@ -25,7 +19,7 @@ struct DWstruct {
 
 typedef union {
 	struct DWstruct s;
-	DWtype ll;
+	long long ll;
 } DWunion;
 
 #endif /* __ASM_LIBGCC_H */

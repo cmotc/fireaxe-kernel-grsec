@@ -45,7 +45,7 @@ static void prism54_wpa_bss_ie_add(islpci_private *priv, u8 *bssid,
 				u8 *wpa_ie, size_t wpa_ie_len);
 static size_t prism54_wpa_bss_ie_get(islpci_private *priv, u8 *bssid, u8 *wpa_ie);
 static int prism54_set_wpa(struct net_device *, struct iw_request_info *,
-				union iwreq_data *, char *);
+				__u32 *, char *);
 
 /* In 500 kbps */
 static const unsigned char scan_rate_list[] = { 2, 4, 11, 22,
@@ -240,7 +240,7 @@ prism54_get_wireless_stats(struct net_device *ndev)
 
 static int
 prism54_commit(struct net_device *ndev, struct iw_request_info *info,
-	       union iwreq_data *cwrq, char *extra)
+	       char *cwrq, char *extra)
 {
 	islpci_private *priv = netdev_priv(ndev);
 
@@ -256,9 +256,8 @@ prism54_commit(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_get_name(struct net_device *ndev, struct iw_request_info *info,
-		 union iwreq_data *wrqu, char *extra)
+		 char *cwrq, char *extra)
 {
-	char *cwrq = wrqu->name;
 	islpci_private *priv = netdev_priv(ndev);
 	char *capabilities;
 	union oid_res_t r;
@@ -288,9 +287,8 @@ prism54_get_name(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_set_freq(struct net_device *ndev, struct iw_request_info *info,
-		 union iwreq_data *wrqu, char *extra)
+		 struct iw_freq *fwrq, char *extra)
 {
-	struct iw_freq *fwrq = &wrqu->freq;
 	islpci_private *priv = netdev_priv(ndev);
 	int rvalue;
 	u32 c;
@@ -309,9 +307,8 @@ prism54_set_freq(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_get_freq(struct net_device *ndev, struct iw_request_info *info,
-		 union iwreq_data *wrqu, char *extra)
+		 struct iw_freq *fwrq, char *extra)
 {
-	struct iw_freq *fwrq = &wrqu->freq;
 	islpci_private *priv = netdev_priv(ndev);
 	union oid_res_t r;
 	int rvalue;
@@ -327,9 +324,8 @@ prism54_get_freq(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_set_mode(struct net_device *ndev, struct iw_request_info *info,
-		 union iwreq_data *wrqu, char *extra)
+		 __u32 * uwrq, char *extra)
 {
-	__u32 *uwrq = &wrqu->mode;
 	islpci_private *priv = netdev_priv(ndev);
 	u32 mlmeautolevel = CARD_DEFAULT_MLME_MODE;
 
@@ -372,9 +368,8 @@ prism54_set_mode(struct net_device *ndev, struct iw_request_info *info,
 /* Use mib cache */
 static int
 prism54_get_mode(struct net_device *ndev, struct iw_request_info *info,
-		 union iwreq_data *wrqu, char *extra)
+		 __u32 * uwrq, char *extra)
 {
-	__u32 *uwrq = &wrqu->mode;
 	islpci_private *priv = netdev_priv(ndev);
 
 	BUG_ON((priv->iw_mode < IW_MODE_AUTO) || (priv->iw_mode >
@@ -391,9 +386,8 @@ prism54_get_mode(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_set_sens(struct net_device *ndev, struct iw_request_info *info,
-		 union iwreq_data *wrqu, char *extra)
+		 struct iw_param *vwrq, char *extra)
 {
-	struct iw_param *vwrq = &wrqu->sens;
 	islpci_private *priv = netdev_priv(ndev);
 	u32 sens;
 
@@ -405,9 +399,8 @@ prism54_set_sens(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_get_sens(struct net_device *ndev, struct iw_request_info *info,
-		 union iwreq_data *wrqu, char *extra)
+		 struct iw_param *vwrq, char *extra)
 {
-	struct iw_param *vwrq = &wrqu->sens;
 	islpci_private *priv = netdev_priv(ndev);
 	union oid_res_t r;
 	int rvalue;
@@ -423,9 +416,8 @@ prism54_get_sens(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_get_range(struct net_device *ndev, struct iw_request_info *info,
-		  union iwreq_data *wrqu, char *extra)
+		  struct iw_point *dwrq, char *extra)
 {
-	struct iw_point *dwrq = &wrqu->data;
 	struct iw_range *range = (struct iw_range *) extra;
 	islpci_private *priv = netdev_priv(ndev);
 	u8 *data;
@@ -529,9 +521,8 @@ prism54_get_range(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_set_wap(struct net_device *ndev, struct iw_request_info *info,
-		union iwreq_data *wrqu, char *extra)
+		struct sockaddr *awrq, char *extra)
 {
-	struct sockaddr *awrq = &wrqu->ap_addr;
 	islpci_private *priv = netdev_priv(ndev);
 	char bssid[6];
 	int rvalue;
@@ -552,9 +543,8 @@ prism54_set_wap(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_get_wap(struct net_device *ndev, struct iw_request_info *info,
-		union iwreq_data *wrqu, char *extra)
+		struct sockaddr *awrq, char *extra)
 {
-	struct sockaddr *awrq = &wrqu->ap_addr;
 	islpci_private *priv = netdev_priv(ndev);
 	union oid_res_t r;
 	int rvalue;
@@ -569,7 +559,7 @@ prism54_get_wap(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_set_scan(struct net_device *dev, struct iw_request_info *info,
-		 union iwreq_data *vwrq, char *extra)
+		 struct iw_param *vwrq, char *extra)
 {
 	/* hehe the device does this automagicaly */
 	return 0;
@@ -689,9 +679,8 @@ prism54_translate_bss(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_get_scan(struct net_device *ndev, struct iw_request_info *info,
-		 union iwreq_data *wrqu, char *extra)
+		 struct iw_point *dwrq, char *extra)
 {
-	struct iw_point *dwrq = &wrqu->data;
 	islpci_private *priv = netdev_priv(ndev);
 	int i, rvalue;
 	struct obj_bsslist *bsslist;
@@ -744,9 +733,8 @@ prism54_get_scan(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_set_essid(struct net_device *ndev, struct iw_request_info *info,
-		  union iwreq_data *wrqu, char *extra)
+		  struct iw_point *dwrq, char *extra)
 {
-	struct iw_point *dwrq = &wrqu->data;
 	islpci_private *priv = netdev_priv(ndev);
 	struct obj_ssid essid;
 
@@ -772,9 +760,8 @@ prism54_set_essid(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_get_essid(struct net_device *ndev, struct iw_request_info *info,
-		  union iwreq_data *wrqu, char *extra)
+		  struct iw_point *dwrq, char *extra)
 {
-	struct iw_point *dwrq = &wrqu->data;
 	islpci_private *priv = netdev_priv(ndev);
 	struct obj_ssid *essid;
 	union oid_res_t r;
@@ -803,9 +790,8 @@ prism54_get_essid(struct net_device *ndev, struct iw_request_info *info,
  */
 static int
 prism54_set_nick(struct net_device *ndev, struct iw_request_info *info,
-		 union iwreq_data *wrqu, char *extra)
+		 struct iw_point *dwrq, char *extra)
 {
-	struct iw_point *dwrq = &wrqu->data;
 	islpci_private *priv = netdev_priv(ndev);
 
 	if (dwrq->length > IW_ESSID_MAX_SIZE)
@@ -821,9 +807,8 @@ prism54_set_nick(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_get_nick(struct net_device *ndev, struct iw_request_info *info,
-		 union iwreq_data *wrqu, char *extra)
+		 struct iw_point *dwrq, char *extra)
 {
-	struct iw_point *dwrq = &wrqu->data;
 	islpci_private *priv = netdev_priv(ndev);
 
 	dwrq->length = 0;
@@ -841,9 +826,9 @@ prism54_get_nick(struct net_device *ndev, struct iw_request_info *info,
 static int
 prism54_set_rate(struct net_device *ndev,
 		 struct iw_request_info *info,
-		 union iwreq_data *wrqu, char *extra)
+		 struct iw_param *vwrq, char *extra)
 {
-	struct iw_param *vwrq = &wrqu->bitrate;
+
 	islpci_private *priv = netdev_priv(ndev);
 	u32 rate, profile;
 	char *data;
@@ -914,9 +899,8 @@ prism54_set_rate(struct net_device *ndev,
 static int
 prism54_get_rate(struct net_device *ndev,
 		 struct iw_request_info *info,
-		 union iwreq_data *wrqu, char *extra)
+		 struct iw_param *vwrq, char *extra)
 {
-	struct iw_param *vwrq = &wrqu->bitrate;
 	islpci_private *priv = netdev_priv(ndev);
 	int rvalue;
 	char *data;
@@ -942,9 +926,8 @@ prism54_get_rate(struct net_device *ndev,
 
 static int
 prism54_set_rts(struct net_device *ndev, struct iw_request_info *info,
-		union iwreq_data *wrqu, char *extra)
+		struct iw_param *vwrq, char *extra)
 {
-	struct iw_param *vwrq = &wrqu->rts;
 	islpci_private *priv = netdev_priv(ndev);
 
 	return mgt_set_request(priv, DOT11_OID_RTSTHRESH, 0, &vwrq->value);
@@ -952,9 +935,8 @@ prism54_set_rts(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_get_rts(struct net_device *ndev, struct iw_request_info *info,
-		union iwreq_data *wrqu, char *extra)
+		struct iw_param *vwrq, char *extra)
 {
-	struct iw_param *vwrq = &wrqu->rts;
 	islpci_private *priv = netdev_priv(ndev);
 	union oid_res_t r;
 	int rvalue;
@@ -968,9 +950,8 @@ prism54_get_rts(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_set_frag(struct net_device *ndev, struct iw_request_info *info,
-		 union iwreq_data *wrqu, char *extra)
+		 struct iw_param *vwrq, char *extra)
 {
-	struct iw_param *vwrq = &wrqu->frag;
 	islpci_private *priv = netdev_priv(ndev);
 
 	return mgt_set_request(priv, DOT11_OID_FRAGTHRESH, 0, &vwrq->value);
@@ -978,9 +959,8 @@ prism54_set_frag(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_get_frag(struct net_device *ndev, struct iw_request_info *info,
-		 union iwreq_data *wrqu, char *extra)
+		 struct iw_param *vwrq, char *extra)
 {
-	struct iw_param *vwrq = &wrqu->frag;
 	islpci_private *priv = netdev_priv(ndev);
 	union oid_res_t r;
 	int rvalue;
@@ -1000,9 +980,8 @@ prism54_get_frag(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_set_retry(struct net_device *ndev, struct iw_request_info *info,
-		  union iwreq_data *wrqu, char *extra)
+		  struct iw_param *vwrq, char *extra)
 {
-	struct iw_param *vwrq = &wrqu->retry;
 	islpci_private *priv = netdev_priv(ndev);
 	u32 slimit = 0, llimit = 0;	/* short and long limit */
 	u32 lifetime = 0;
@@ -1043,9 +1022,8 @@ prism54_set_retry(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_get_retry(struct net_device *ndev, struct iw_request_info *info,
-		  union iwreq_data *wrqu, char *extra)
+		  struct iw_param *vwrq, char *extra)
 {
-	struct iw_param *vwrq = &wrqu->retry;
 	islpci_private *priv = netdev_priv(ndev);
 	union oid_res_t r;
 	int rvalue = 0;
@@ -1076,9 +1054,8 @@ prism54_get_retry(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_set_encode(struct net_device *ndev, struct iw_request_info *info,
-		   union iwreq_data *wrqu, char *extra)
+		   struct iw_point *dwrq, char *extra)
 {
-	struct iw_point *dwrq = &wrqu->data;
 	islpci_private *priv = netdev_priv(ndev);
 	int rvalue = 0, force = 0;
 	int authen = DOT11_AUTH_OS, invoke = 0, exunencrypt = 0;
@@ -1178,9 +1155,8 @@ prism54_set_encode(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_get_encode(struct net_device *ndev, struct iw_request_info *info,
-		   union iwreq_data *wrqu, char *extra)
+		   struct iw_point *dwrq, char *extra)
 {
-	struct iw_point *dwrq = &wrqu->data;
 	islpci_private *priv = netdev_priv(ndev);
 	struct obj_key *key;
 	u32 devindex, index = (dwrq->flags & IW_ENCODE_INDEX) - 1;
@@ -1227,9 +1203,8 @@ prism54_get_encode(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_get_txpower(struct net_device *ndev, struct iw_request_info *info,
-		    union iwreq_data *wrqu, char *extra)
+		    struct iw_param *vwrq, char *extra)
 {
-	struct iw_param *vwrq = &wrqu->txpower;
 	islpci_private *priv = netdev_priv(ndev);
 	union oid_res_t r;
 	int rvalue;
@@ -1248,9 +1223,8 @@ prism54_get_txpower(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_set_txpower(struct net_device *ndev, struct iw_request_info *info,
-		    union iwreq_data *wrqu, char *extra)
+		    struct iw_param *vwrq, char *extra)
 {
-	struct iw_param *vwrq = &wrqu->txpower;
 	islpci_private *priv = netdev_priv(ndev);
 	s32 u = vwrq->value;
 
@@ -1275,9 +1249,8 @@ prism54_set_txpower(struct net_device *ndev, struct iw_request_info *info,
 
 static int prism54_set_genie(struct net_device *ndev,
 			     struct iw_request_info *info,
-			     union iwreq_data *wrqu, char *extra)
+			     struct iw_point *data, char *extra)
 {
-	struct iw_point *data = &wrqu->data;
 	islpci_private *priv = netdev_priv(ndev);
 	int alen, ret = 0;
 	struct obj_attachment *attach;
@@ -1325,9 +1298,8 @@ static int prism54_set_genie(struct net_device *ndev,
 
 static int prism54_get_genie(struct net_device *ndev,
 			     struct iw_request_info *info,
-			     union iwreq_data *wrqu, char *extra)
+			     struct iw_point *data, char *extra)
 {
-	struct iw_point *data = &wrqu->data;
 	islpci_private *priv = netdev_priv(ndev);
 	int len = priv->wpa_ie_len;
 
@@ -1767,7 +1739,7 @@ out:
 
 static int
 prism54_reset(struct net_device *ndev, struct iw_request_info *info,
-	      union iwreq_data * uwrq, char *extra)
+	      __u32 * uwrq, char *extra)
 {
 	islpci_reset(netdev_priv(ndev), 0);
 
@@ -1776,9 +1748,8 @@ prism54_reset(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_get_oid(struct net_device *ndev, struct iw_request_info *info,
-		union iwreq_data *wrqu, char *extra)
+		struct iw_point *dwrq, char *extra)
 {
-	struct iw_point *dwrq = &wrqu->data;
 	union oid_res_t r;
 	int rvalue;
 	enum oid_num_t n = dwrq->flags;
@@ -1792,9 +1763,8 @@ prism54_get_oid(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_set_u32(struct net_device *ndev, struct iw_request_info *info,
-		union iwreq_data *wrqu, char *extra)
+		__u32 * uwrq, char *extra)
 {
-	__u32 * uwrq = &wrqu->mode;
 	u32 oid = uwrq[0], u = uwrq[1];
 
 	return mgt_set_request(netdev_priv(ndev), oid, 0, &u);
@@ -1802,9 +1772,8 @@ prism54_set_u32(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_set_raw(struct net_device *ndev, struct iw_request_info *info,
-		union iwreq_data *wrqu, char *extra)
+		struct iw_point *dwrq, char *extra)
 {
-	struct iw_point *dwrq = &wrqu->data;
 	u32 oid = dwrq->flags;
 
 	return mgt_set_request(netdev_priv(ndev), oid, 0, extra);
@@ -1850,7 +1819,7 @@ prism54_acl_clean(struct islpci_acl *acl)
 
 static int
 prism54_add_mac(struct net_device *ndev, struct iw_request_info *info,
-		union iwreq_data *awrq, char *extra)
+		struct sockaddr *awrq, char *extra)
 {
 	islpci_private *priv = netdev_priv(ndev);
 	struct islpci_acl *acl = &priv->acl;
@@ -1879,7 +1848,7 @@ prism54_add_mac(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_del_mac(struct net_device *ndev, struct iw_request_info *info,
-		union iwreq_data *awrq, char *extra)
+		struct sockaddr *awrq, char *extra)
 {
 	islpci_private *priv = netdev_priv(ndev);
 	struct islpci_acl *acl = &priv->acl;
@@ -1906,9 +1875,8 @@ prism54_del_mac(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_get_mac(struct net_device *ndev, struct iw_request_info *info,
-		union iwreq_data *wrqu, char *extra)
+		struct iw_point *dwrq, char *extra)
 {
-	struct iw_point *dwrq = &wrqu->data;
 	islpci_private *priv = netdev_priv(ndev);
 	struct islpci_acl *acl = &priv->acl;
 	struct mac_entry *entry;
@@ -1935,9 +1903,8 @@ prism54_get_mac(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_set_policy(struct net_device *ndev, struct iw_request_info *info,
-		   union iwreq_data *wrqu, char *extra)
+		   __u32 * uwrq, char *extra)
 {
-	__u32 * uwrq = &wrqu->mode;
 	islpci_private *priv = netdev_priv(ndev);
 	struct islpci_acl *acl = &priv->acl;
 	u32 mlmeautolevel;
@@ -1972,9 +1939,8 @@ prism54_set_policy(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_get_policy(struct net_device *ndev, struct iw_request_info *info,
-		   union iwreq_data *wrqu, char *extra)
+		   __u32 * uwrq, char *extra)
 {
-	__u32 * uwrq = &wrqu->mode;
 	islpci_private *priv = netdev_priv(ndev);
 	struct islpci_acl *acl = &priv->acl;
 
@@ -2013,7 +1979,7 @@ prism54_mac_accept(struct islpci_acl *acl, char *mac)
 
 static int
 prism54_kick_all(struct net_device *ndev, struct iw_request_info *info,
-		 union iwreq_data *dwrq, char *extra)
+		 struct iw_point *dwrq, char *extra)
 {
 	struct obj_mlme *mlme;
 	int rvalue;
@@ -2033,7 +1999,7 @@ prism54_kick_all(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_kick_mac(struct net_device *ndev, struct iw_request_info *info,
-		 union iwreq_data *awrq, char *extra)
+		 struct sockaddr *awrq, char *extra)
 {
 	struct obj_mlme *mlme;
 	struct sockaddr *addr = (struct sockaddr *) extra;
@@ -2119,7 +2085,8 @@ link_changed(struct net_device *ndev, u32 bitrate)
 		netif_carrier_on(ndev);
 		if (priv->iw_mode == IW_MODE_INFRA) {
 			union iwreq_data uwrq;
-			prism54_get_wap(ndev, NULL, &uwrq, NULL);
+			prism54_get_wap(ndev, NULL, (struct sockaddr *) &uwrq,
+					NULL);
 			wireless_send_event(ndev, SIOCGIWAP, &uwrq, NULL);
 		} else
 			send_simple_event(netdev_priv(ndev),
@@ -2531,9 +2498,8 @@ prism54_set_mac_address(struct net_device *ndev, void *addr)
 
 static int
 prism54_set_wpa(struct net_device *ndev, struct iw_request_info *info,
-		union iwreq_data *wrqu, char *extra)
+		__u32 * uwrq, char *extra)
 {
-	__u32 * uwrq = &wrqu->mode;
 	islpci_private *priv = netdev_priv(ndev);
 	u32 mlme, authen, dot1x, filter, wep;
 
@@ -2576,9 +2542,8 @@ prism54_set_wpa(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_get_wpa(struct net_device *ndev, struct iw_request_info *info,
-		union iwreq_data *wrqu, char *extra)
+		__u32 * uwrq, char *extra)
 {
-	__u32 * uwrq = &wrqu->mode;
 	islpci_private *priv = netdev_priv(ndev);
 	*uwrq = priv->wpa;
 	return 0;
@@ -2586,9 +2551,8 @@ prism54_get_wpa(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_set_prismhdr(struct net_device *ndev, struct iw_request_info *info,
-		    union iwreq_data *wrqu, char *extra)
+		     __u32 * uwrq, char *extra)
 {
-	__u32 * uwrq = &wrqu->mode;
 	islpci_private *priv = netdev_priv(ndev);
 	priv->monitor_type =
 	    (*uwrq ? ARPHRD_IEEE80211_PRISM : ARPHRD_IEEE80211);
@@ -2600,9 +2564,8 @@ prism54_set_prismhdr(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_get_prismhdr(struct net_device *ndev, struct iw_request_info *info,
-		    union iwreq_data *wrqu, char *extra)
+		     __u32 * uwrq, char *extra)
 {
-	__u32 * uwrq = &wrqu->mode;
 	islpci_private *priv = netdev_priv(ndev);
 	*uwrq = (priv->monitor_type == ARPHRD_IEEE80211_PRISM);
 	return 0;
@@ -2610,9 +2573,8 @@ prism54_get_prismhdr(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_debug_oid(struct net_device *ndev, struct iw_request_info *info,
-		  union iwreq_data *wrqu, char *extra)
+		  __u32 * uwrq, char *extra)
 {
-	__u32 * uwrq = &wrqu->mode;
 	islpci_private *priv = netdev_priv(ndev);
 
 	priv->priv_oid = *uwrq;
@@ -2623,9 +2585,8 @@ prism54_debug_oid(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_debug_get_oid(struct net_device *ndev, struct iw_request_info *info,
-		      union iwreq_data *wrqu, char *extra)
+		      struct iw_point *data, char *extra)
 {
-	struct iw_point *data = &wrqu->data;
 	islpci_private *priv = netdev_priv(ndev);
 	struct islpci_mgmtframe *response;
 	int ret = -EIO;
@@ -2660,9 +2621,8 @@ prism54_debug_get_oid(struct net_device *ndev, struct iw_request_info *info,
 
 static int
 prism54_debug_set_oid(struct net_device *ndev, struct iw_request_info *info,
-		      union iwreq_data *wrqu, char *extra)
+		      struct iw_point *data, char *extra)
 {
-	struct iw_point *data = &wrqu->data;
 	islpci_private *priv = netdev_priv(ndev);
 	struct islpci_mgmtframe *response;
 	int ret = 0, response_op = PIMFOR_OP_ERROR;
@@ -2722,60 +2682,60 @@ prism54_set_spy(struct net_device *ndev,
 }
 
 static const iw_handler prism54_handler[] = {
-	prism54_commit,	/* SIOCSIWCOMMIT */
-	prism54_get_name,	/* SIOCGIWNAME */
-	NULL,	/* SIOCSIWNWID */
-	NULL,	/* SIOCGIWNWID */
-	prism54_set_freq,	/* SIOCSIWFREQ */
-	prism54_get_freq,	/* SIOCGIWFREQ */
-	prism54_set_mode,	/* SIOCSIWMODE */
-	prism54_get_mode,	/* SIOCGIWMODE */
-	prism54_set_sens,	/* SIOCSIWSENS */
-	prism54_get_sens,	/* SIOCGIWSENS */
-	NULL,	/* SIOCSIWRANGE */
-	prism54_get_range,	/* SIOCGIWRANGE */
-	NULL,	/* SIOCSIWPRIV */
-	NULL,	/* SIOCGIWPRIV */
-	NULL,	/* SIOCSIWSTATS */
-	NULL,	/* SIOCGIWSTATS */
+	(iw_handler) prism54_commit,	/* SIOCSIWCOMMIT */
+	(iw_handler) prism54_get_name,	/* SIOCGIWNAME */
+	(iw_handler) NULL,	/* SIOCSIWNWID */
+	(iw_handler) NULL,	/* SIOCGIWNWID */
+	(iw_handler) prism54_set_freq,	/* SIOCSIWFREQ */
+	(iw_handler) prism54_get_freq,	/* SIOCGIWFREQ */
+	(iw_handler) prism54_set_mode,	/* SIOCSIWMODE */
+	(iw_handler) prism54_get_mode,	/* SIOCGIWMODE */
+	(iw_handler) prism54_set_sens,	/* SIOCSIWSENS */
+	(iw_handler) prism54_get_sens,	/* SIOCGIWSENS */
+	(iw_handler) NULL,	/* SIOCSIWRANGE */
+	(iw_handler) prism54_get_range,	/* SIOCGIWRANGE */
+	(iw_handler) NULL,	/* SIOCSIWPRIV */
+	(iw_handler) NULL,	/* SIOCGIWPRIV */
+	(iw_handler) NULL,	/* SIOCSIWSTATS */
+	(iw_handler) NULL,	/* SIOCGIWSTATS */
 	prism54_set_spy,	/* SIOCSIWSPY */
 	iw_handler_get_spy,	/* SIOCGIWSPY */
 	iw_handler_set_thrspy,	/* SIOCSIWTHRSPY */
 	iw_handler_get_thrspy,	/* SIOCGIWTHRSPY */
-	prism54_set_wap,	/* SIOCSIWAP */
-	prism54_get_wap,	/* SIOCGIWAP */
-	NULL,	/* -- hole -- */
-	NULL,	/* SIOCGIWAPLIST deprecated */
-	prism54_set_scan,	/* SIOCSIWSCAN */
-	prism54_get_scan,	/* SIOCGIWSCAN */
-	prism54_set_essid,	/* SIOCSIWESSID */
-	prism54_get_essid,	/* SIOCGIWESSID */
-	prism54_set_nick,	/* SIOCSIWNICKN */
-	prism54_get_nick,	/* SIOCGIWNICKN */
-	NULL,	/* -- hole -- */
-	NULL,	/* -- hole -- */
-	prism54_set_rate,	/* SIOCSIWRATE */
-	prism54_get_rate,	/* SIOCGIWRATE */
-	prism54_set_rts,	/* SIOCSIWRTS */
-	prism54_get_rts,	/* SIOCGIWRTS */
-	prism54_set_frag,	/* SIOCSIWFRAG */
-	prism54_get_frag,	/* SIOCGIWFRAG */
-	prism54_set_txpower,	/* SIOCSIWTXPOW */
-	prism54_get_txpower,	/* SIOCGIWTXPOW */
-	prism54_set_retry,	/* SIOCSIWRETRY */
-	prism54_get_retry,	/* SIOCGIWRETRY */
-	prism54_set_encode,	/* SIOCSIWENCODE */
-	prism54_get_encode,	/* SIOCGIWENCODE */
-	NULL,	/* SIOCSIWPOWER */
-	NULL,	/* SIOCGIWPOWER */
+	(iw_handler) prism54_set_wap,	/* SIOCSIWAP */
+	(iw_handler) prism54_get_wap,	/* SIOCGIWAP */
+	(iw_handler) NULL,	/* -- hole -- */
+	(iw_handler) NULL,	/* SIOCGIWAPLIST deprecated */
+	(iw_handler) prism54_set_scan,	/* SIOCSIWSCAN */
+	(iw_handler) prism54_get_scan,	/* SIOCGIWSCAN */
+	(iw_handler) prism54_set_essid,	/* SIOCSIWESSID */
+	(iw_handler) prism54_get_essid,	/* SIOCGIWESSID */
+	(iw_handler) prism54_set_nick,	/* SIOCSIWNICKN */
+	(iw_handler) prism54_get_nick,	/* SIOCGIWNICKN */
+	(iw_handler) NULL,	/* -- hole -- */
+	(iw_handler) NULL,	/* -- hole -- */
+	(iw_handler) prism54_set_rate,	/* SIOCSIWRATE */
+	(iw_handler) prism54_get_rate,	/* SIOCGIWRATE */
+	(iw_handler) prism54_set_rts,	/* SIOCSIWRTS */
+	(iw_handler) prism54_get_rts,	/* SIOCGIWRTS */
+	(iw_handler) prism54_set_frag,	/* SIOCSIWFRAG */
+	(iw_handler) prism54_get_frag,	/* SIOCGIWFRAG */
+	(iw_handler) prism54_set_txpower,	/* SIOCSIWTXPOW */
+	(iw_handler) prism54_get_txpower,	/* SIOCGIWTXPOW */
+	(iw_handler) prism54_set_retry,	/* SIOCSIWRETRY */
+	(iw_handler) prism54_get_retry,	/* SIOCGIWRETRY */
+	(iw_handler) prism54_set_encode,	/* SIOCSIWENCODE */
+	(iw_handler) prism54_get_encode,	/* SIOCGIWENCODE */
+	(iw_handler) NULL,	/* SIOCSIWPOWER */
+	(iw_handler) NULL,	/* SIOCGIWPOWER */
 	NULL,			/* -- hole -- */
 	NULL,			/* -- hole -- */
-	prism54_set_genie,	/* SIOCSIWGENIE */
-	prism54_get_genie,	/* SIOCGIWGENIE */
-	prism54_set_auth,	/* SIOCSIWAUTH */
-	prism54_get_auth,	/* SIOCGIWAUTH */
-	prism54_set_encodeext, /* SIOCSIWENCODEEXT */
-	prism54_get_encodeext, /* SIOCGIWENCODEEXT */
+	(iw_handler) prism54_set_genie,	/* SIOCSIWGENIE */
+	(iw_handler) prism54_get_genie,	/* SIOCGIWGENIE */
+	(iw_handler) prism54_set_auth,	/* SIOCSIWAUTH */
+	(iw_handler) prism54_get_auth,	/* SIOCGIWAUTH */
+	(iw_handler) prism54_set_encodeext, /* SIOCSIWENCODEEXT */
+	(iw_handler) prism54_get_encodeext, /* SIOCGIWENCODEEXT */
 	NULL,			/* SIOCSIWPMKSA */
 };
 
@@ -2912,31 +2872,31 @@ static const struct iw_priv_args prism54_private_args[] = {
 };
 
 static const iw_handler prism54_private_handler[] = {
-	prism54_reset,
-	prism54_get_policy,
-	prism54_set_policy,
-	prism54_get_mac,
-	prism54_add_mac,
-	NULL,
-	prism54_del_mac,
-	NULL,
-	prism54_kick_mac,
-	NULL,
-	prism54_kick_all,
-	prism54_get_wpa,
-	prism54_set_wpa,
-	NULL,
-	prism54_debug_oid,
-	prism54_debug_get_oid,
-	prism54_debug_set_oid,
-	prism54_get_oid,
-	prism54_set_u32,
-	NULL,
-	prism54_set_raw,
-	NULL,
-	prism54_set_raw,
-	prism54_get_prismhdr,
-	prism54_set_prismhdr,
+	(iw_handler) prism54_reset,
+	(iw_handler) prism54_get_policy,
+	(iw_handler) prism54_set_policy,
+	(iw_handler) prism54_get_mac,
+	(iw_handler) prism54_add_mac,
+	(iw_handler) NULL,
+	(iw_handler) prism54_del_mac,
+	(iw_handler) NULL,
+	(iw_handler) prism54_kick_mac,
+	(iw_handler) NULL,
+	(iw_handler) prism54_kick_all,
+	(iw_handler) prism54_get_wpa,
+	(iw_handler) prism54_set_wpa,
+	(iw_handler) NULL,
+	(iw_handler) prism54_debug_oid,
+	(iw_handler) prism54_debug_get_oid,
+	(iw_handler) prism54_debug_set_oid,
+	(iw_handler) prism54_get_oid,
+	(iw_handler) prism54_set_u32,
+	(iw_handler) NULL,
+	(iw_handler) prism54_set_raw,
+	(iw_handler) NULL,
+	(iw_handler) prism54_set_raw,
+	(iw_handler) prism54_get_prismhdr,
+	(iw_handler) prism54_set_prismhdr,
 };
 
 const struct iw_handler_def prism54_handler_def = {

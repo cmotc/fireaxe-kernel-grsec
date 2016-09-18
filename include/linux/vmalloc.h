@@ -4,10 +4,12 @@
 #include <linux/spinlock.h>
 #include <linux/init.h>
 #include <linux/list.h>
+#include <linux/llist.h>
 #include <asm/page.h>		/* pgprot_t */
 #include <linux/rbtree.h>
 
 struct vm_area_struct;		/* vma defining user mapping in mm_types.h */
+struct notifier_block;		/* in notifier.h */
 
 /* bits in flags of vmalloc's vm_struct below */
 #define VM_IOREMAP		0x00000001	/* ioremap() and friends */
@@ -17,14 +19,6 @@ struct vm_area_struct;		/* vma defining user mapping in mm_types.h */
 #define VM_UNINITIALIZED	0x00000020	/* vm_struct is not fully initialized */
 #define VM_NO_GUARD		0x00000040      /* don't add guard page */
 #define VM_KASAN		0x00000080      /* has allocated kasan shadow memory */
-
-#if defined(CONFIG_X86) && defined(CONFIG_PAX_KERNEXEC)
-#define VM_KERNEXEC		0x00000100	/* allocate from executable kernel memory range */
-#endif
-
-#define VM_USERCOPY		0x00000200	/* allocation intended for copies to userland */
-
-
 /* bits [20..32] reserved for arch specific ioremap internals */
 
 /*
@@ -52,7 +46,7 @@ struct vmap_area {
 	unsigned long flags;
 	struct rb_node rb_node;         /* address sorted rbtree */
 	struct list_head list;          /* address sorted list */
-	struct list_head purge_list;    /* "lazy purge" list */
+	struct llist_node purge_list;    /* "lazy purge" list */
 	struct vm_struct *vm;
 	struct rcu_head rcu_head;
 };
@@ -74,7 +68,6 @@ static inline void vmalloc_init(void)
 #endif
 
 extern void *vmalloc(unsigned long size);
-extern void *vmalloc_usercopy(unsigned long size);
 extern void *vzalloc(unsigned long size);
 extern void *vmalloc_user(unsigned long size);
 extern void *vmalloc_node(unsigned long size, int node);
@@ -93,10 +86,6 @@ extern void vfree(const void *addr);
 extern void *vmap(struct page **pages, unsigned int count,
 			unsigned long flags, pgprot_t prot);
 extern void vunmap(const void *addr);
-
-#ifdef CONFIG_GRKERNSEC_KSTACKOVERFLOW
-extern void unmap_process_stacks(struct task_struct *task);
-#endif
 
 extern int remap_vmalloc_range_partial(struct vm_area_struct *vma,
 				       unsigned long uaddr, void *kaddr,
@@ -162,7 +151,7 @@ extern void free_vm_area(struct vm_struct *area);
 
 /* for /dev/kmem */
 extern long vread(char *buf, char *addr, unsigned long count);
-extern long vwrite(char *buf, char *addr, unsigned long count) __size_overflow(3);
+extern long vwrite(char *buf, char *addr, unsigned long count);
 
 /*
  *	Internals.  Dont't use..
@@ -199,5 +188,8 @@ pcpu_free_vm_areas(struct vm_struct **vms, int nr_vms)
 #else
 #define VMALLOC_TOTAL 0UL
 #endif
+
+int register_vmap_purge_notifier(struct notifier_block *nb);
+int unregister_vmap_purge_notifier(struct notifier_block *nb);
 
 #endif /* _LINUX_VMALLOC_H */

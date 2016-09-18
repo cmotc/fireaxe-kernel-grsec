@@ -1454,7 +1454,7 @@ void native_disable_io_apic(void)
 		ioapic_write_entry(ioapic_i8259.apic, ioapic_i8259.pin, entry);
 	}
 
-	if (cpu_has_apic || apic_from_smp_config())
+	if (boot_cpu_has(X86_FEATURE_APIC) || apic_from_smp_config())
 		disconnect_bsp_APIC(ioapic_i8259.pin != -1);
 }
 
@@ -1682,7 +1682,7 @@ static unsigned int startup_ioapic_irq(struct irq_data *data)
 	return was_pending;
 }
 
-atomic_unchecked_t irq_mis_count;
+atomic_t irq_mis_count;
 
 #ifdef CONFIG_GENERIC_PENDING_IRQ
 static bool io_apic_level_ack_pending(struct mp_chip_data *data)
@@ -1821,7 +1821,7 @@ static void ioapic_ack_level(struct irq_data *irq_data)
 	 * at the cpu.
 	 */
 	if (!(v & (1 << (i & 0x1f)))) {
-		atomic_inc_unchecked(&irq_mis_count);
+		atomic_inc(&irq_mis_count);
 		eoi_ioapic_pin(cfg->vector, irq_data->chip_data);
 	}
 
@@ -1867,7 +1867,7 @@ static int ioapic_set_affinity(struct irq_data *irq_data,
 	return ret;
 }
 
-static struct irq_chip ioapic_chip = {
+static struct irq_chip ioapic_chip __read_mostly = {
 	.name			= "IO-APIC",
 	.irq_startup		= startup_ioapic_irq,
 	.irq_mask		= mask_ioapic_irq,
@@ -1878,7 +1878,7 @@ static struct irq_chip ioapic_chip = {
 	.flags			= IRQCHIP_SKIP_SET_WAKE,
 };
 
-static struct irq_chip ioapic_ir_chip = {
+static struct irq_chip ioapic_ir_chip __read_mostly = {
 	.name			= "IR-IO-APIC",
 	.irq_startup		= startup_ioapic_irq,
 	.irq_mask		= mask_ioapic_irq,
@@ -1936,7 +1936,7 @@ static void ack_lapic_irq(struct irq_data *data)
 	ack_APIC_irq();
 }
 
-static struct irq_chip lapic_chip = {
+static struct irq_chip lapic_chip __read_mostly = {
 	.name		= "local-APIC",
 	.irq_mask	= mask_lapic_irq,
 	.irq_unmask	= unmask_lapic_irq,
@@ -2588,8 +2588,8 @@ static struct resource * __init ioapic_setup_resources(void)
 		res[num].flags = IORESOURCE_MEM | IORESOURCE_BUSY;
 		snprintf(mem, IOAPIC_RESOURCE_NAME_SIZE, "IOAPIC %u", i);
 		mem += IOAPIC_RESOURCE_NAME_SIZE;
+		ioapics[i].iomem_res = &res[num];
 		num++;
-		ioapics[i].iomem_res = res;
 	}
 
 	ioapic_resources = res;

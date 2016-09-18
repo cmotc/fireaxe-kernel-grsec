@@ -259,6 +259,7 @@ static void nb8800_receive(struct net_device *dev, unsigned int i,
 		if (err) {
 			netdev_err(dev, "rx buffer allocation failed\n");
 			dev->stats.rx_dropped++;
+			dev_kfree_skb(skb);
 			return;
 		}
 
@@ -395,7 +396,7 @@ static void nb8800_tx_dma_start_irq(struct net_device *dev)
 	spin_unlock(&priv->tx_lock);
 }
 
-static netdev_tx_t nb8800_xmit(struct sk_buff *skb, struct net_device *dev)
+static int nb8800_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct nb8800_priv *priv = netdev_priv(dev);
 	struct nb8800_tx_desc *txd;

@@ -112,8 +112,7 @@ arcofi_fsm(struct IsdnCardState *cs, int event, void *data) {
 }
 
 static void
-arcofi_timer(unsigned long _cs) {
-	struct IsdnCardState *cs = (struct IsdnCardState *)_cs;
+arcofi_timer(struct IsdnCardState *cs) {
 	arcofi_fsm(cs, ARCOFI_TIMEOUT, NULL);
 }
 
@@ -126,7 +125,7 @@ clear_arcofi(struct IsdnCardState *cs) {
 
 void
 init_arcofi(struct IsdnCardState *cs) {
-	cs->dc.isac.arcofitimer.function = arcofi_timer;
+	cs->dc.isac.arcofitimer.function = (void *) arcofi_timer;
 	cs->dc.isac.arcofitimer.data = (long) cs;
 	init_timer(&cs->dc.isac.arcofitimer);
 	init_waitqueue_head(&cs->dc.isac.arcofi_wait);

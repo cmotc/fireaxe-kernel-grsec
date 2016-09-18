@@ -37,7 +37,6 @@ static struct irq_chip lapic_controller;
 static struct apic_chip_data *legacy_irq_data[NR_IRQS_LEGACY];
 #endif
 
-void lock_vector_lock(void) __acquires(&vector_lock);
 void lock_vector_lock(void)
 {
 	/* Used to the online set of cpus does not change
@@ -46,7 +45,6 @@ void lock_vector_lock(void)
 	raw_spin_lock(&vector_lock);
 }
 
-void unlock_vector_lock(void) __releases(&vector_lock);
 void unlock_vector_lock(void)
 {
 	raw_spin_unlock(&vector_lock);
@@ -946,7 +944,7 @@ static int __init print_ICs(void)
 	print_PIC();
 
 	/* don't print out if apic is not there */
-	if (!cpu_has_apic && !apic_from_smp_config())
+	if (!boot_cpu_has(X86_FEATURE_APIC) && !apic_from_smp_config())
 		return 0;
 
 	print_local_APICs(show_lapic);

@@ -670,7 +670,7 @@ static int open(struct tty_struct *tty, struct file *filp)
 	tty->driver_data = info;
 	info->port.tty = tty;
 
-	DBGINFO(("%s open, old ref count = %d\n", info->device_name, atomic_read(&info->port.count)));
+	DBGINFO(("%s open, old ref count = %d\n", info->device_name, info->port.count));
 
 	mutex_lock(&info->port.mutex);
 	info->port.low_latency = (info->port.flags & ASYNC_LOW_LATENCY) ? 1 : 0;
@@ -682,10 +682,10 @@ static int open(struct tty_struct *tty, struct file *filp)
 		mutex_unlock(&info->port.mutex);
 		goto cleanup;
 	}
-	atomic_inc(&info->port.count);
+	info->port.count++;
 	spin_unlock_irqrestore(&info->netlock, flags);
 
-	if (atomic_read(&info->port.count) == 1) {
+	if (info->port.count == 1) {
 		/* 1st open on this device, init hardware */
 		retval = startup(info);
 		if (retval < 0) {
@@ -706,8 +706,8 @@ cleanup:
 	if (retval) {
 		if (tty->count == 1)
 			info->port.tty = NULL; /* tty layer will release tty struct */
-		if(atomic_read(&info->port.count))
-			atomic_dec(&info->port.count);
+		if(info->port.count)
+			info->port.count--;
 	}
 
 	DBGINFO(("%s open rc=%d\n", info->device_name, retval));
@@ -720,13 +720,13 @@ static void close(struct tty_struct *tty, struct file *filp)
 
 	if (sanity_check(info, tty->name, "close"))
 		return;
-	DBGINFO(("%s close entry, count=%d\n", info->device_name, atomic_read(&info->port.count)));
+	DBGINFO(("%s close entry, count=%d\n", info->device_name, info->port.count));
 
 	if (tty_port_close_start(&info->port, tty, filp) == 0)
 		goto cleanup;
 
 	mutex_lock(&info->port.mutex);
- 	if (info->port.flags & ASYNC_INITIALIZED)
+	if (tty_port_initialized(&info->port))
  		wait_until_sent(tty, info->timeout);
 	flush_buffer(tty);
 	tty_ldisc_flush(tty);
@@ -737,7 +737,7 @@ static void close(struct tty_struct *tty, struct file *filp)
 	tty_port_close_end(&info->port, tty);
 	info->port.tty = NULL;
 cleanup:
-	DBGINFO(("%s close exit, count=%d\n", tty->driver->name, atomic_read(&info->port.count)));
+	DBGINFO(("%s close exit, count=%d\n", tty->driver->name, info->port.count));
 }
 
 static void hangup(struct tty_struct *tty)
@@ -755,10 +755,10 @@ static void hangup(struct tty_struct *tty)
 	shutdown(info);
 
 	spin_lock_irqsave(&info->port.lock, flags);
-	atomic_set(&info->port.count, 0);
-	info->port.flags &= ~ASYNC_NORMAL_ACTIVE;
+	info->port.count = 0;
 	info->port.tty = NULL;
 	spin_unlock_irqrestore(&info->port.lock, flags);
+	tty_port_set_active(&info->port, 0);
 	mutex_unlock(&info->port.mutex);
 
 	wake_up_interruptible(&info->port.open_wait);
@@ -784,7 +784,7 @@ static void set_termios(struct tty_struct *tty, struct ktermios *old_termios)
 	/* Handle transition away from B0 status */
 	if (!(old_termios->c_cflag & CBAUD) && C_BAUD(tty)) {
 		info->signals |= SerialSignal_DTR;
- 		if (!C_CRTSCTS(tty) || !test_bit(TTY_THROTTLED, &tty->flags))
+		if (!C_CRTSCTS(tty) || !tty_throttled(tty))
 			info->signals |= SerialSignal_RTS;
 		spin_lock_irqsave(&info->lock,flags);
 	 	set_signals(info);
@@ -893,7 +893,7 @@ static void wait_until_sent(struct tty_struct *tty, int timeout)
 	if (sanity_check(info, tty->name, "wait_until_sent"))
 		return;
 	DBGINFO(("%s wait_until_sent entry\n", info->device_name));
-	if (!(info->port.flags & ASYNC_INITIALIZED))
+	if (!tty_port_initialized(&info->port))
 		goto exit;
 
 	orig_jiffies = jiffies;
@@ -1032,7 +1032,7 @@ static int ioctl(struct tty_struct *tty,
 
 	if ((cmd != TIOCGSERIAL) && (cmd != TIOCSSERIAL) &&
 	    (cmd != TIOCMIWAIT)) {
-		if (tty->flags & (1 << TTY_IO_ERROR))
+		if (tty_io_error(tty))
 		    return -EIO;
 	}
 
@@ -1435,7 +1435,7 @@ static int hdlcdev_attach(struct net_device *dev, unsigned short encoding,
 	unsigned short new_crctype;
 
 	/* return error if TTY interface open */
-	if (atomic_read(&info->port.count))
+	if (info->port.count)
 		return -EBUSY;
 
 	DBGINFO(("%s hdlcdev_attach\n", info->device_name));
@@ -1493,7 +1493,7 @@ static netdev_tx_t hdlcdev_xmit(struct sk_buff *skb,
 	dev->stats.tx_bytes += skb->len;
 
 	/* save start time for transmit timeout detection */
-	dev->trans_start = jiffies;
+	netif_trans_update(dev);
 
 	spin_lock_irqsave(&info->lock, flags);
 	tx_load(info, skb->data, skb->len);
@@ -1531,7 +1531,7 @@ static int hdlcdev_open(struct net_device *dev)
 
 	/* arbitrate between network and tty opens */
 	spin_lock_irqsave(&info->netlock, flags);
-	if (atomic_read(&info->port.count) != 0 || info->netcount != 0) {
+	if (info->port.count != 0 || info->netcount != 0) {
 		DBGINFO(("%s hdlc_open busy\n", dev->name));
 		spin_unlock_irqrestore(&info->netlock, flags);
 		return -EBUSY;
@@ -1552,7 +1552,7 @@ static int hdlcdev_open(struct net_device *dev)
 	program_hw(info);
 
 	/* enable network layer transmit */
-	dev->trans_start = jiffies;
+	netif_trans_update(dev);
 	netif_start_queue(dev);
 
 	/* inform generic HDLC layer of current DCD status */
@@ -1616,7 +1616,7 @@ static int hdlcdev_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 	DBGINFO(("%s hdlcdev_ioctl\n", dev->name));
 
 	/* return error if TTY interface open */
-	if (atomic_read(&info->port.count))
+	if (info->port.count)
 		return -EBUSY;
 
 	if (cmd != SIOCWANDEV)
@@ -2080,7 +2080,7 @@ static void dcd_change(struct slgt_info *info, unsigned short status)
 	wake_up_interruptible(&info->event_wait_q);
 	info->pending_bh |= BH_STATUS;
 
-	if (info->port.flags & ASYNC_CHECK_CD) {
+	if (tty_port_check_carrier(&info->port)) {
 		if (info->signals & SerialSignal_DCD)
 			wake_up_interruptible(&info->port.open_wait);
 		else {
@@ -2403,7 +2403,7 @@ static irqreturn_t slgt_interrupt(int dummy, void *dev_id)
 		if (port == NULL)
 			continue;
 		spin_lock(&port->lock);
-		if ((atomic_read(&port->port.count) || port->netcount) &&
+		if ((port->port.count || port->netcount) &&
 		    port->pending_bh && !port->bh_running &&
 		    !port->bh_requested) {
 			DBGISR(("%s bh queued\n", port->device_name));
@@ -2421,7 +2421,7 @@ static int startup(struct slgt_info *info)
 {
 	DBGINFO(("%s startup\n", info->device_name));
 
-	if (info->port.flags & ASYNC_INITIALIZED)
+	if (tty_port_initialized(&info->port))
 		return 0;
 
 	if (!info->tx_buf) {
@@ -2442,7 +2442,7 @@ static int startup(struct slgt_info *info)
 	if (info->port.tty)
 		clear_bit(TTY_IO_ERROR, &info->port.tty->flags);
 
-	info->port.flags |= ASYNC_INITIALIZED;
+	tty_port_set_initialized(&info->port, 1);
 
 	return 0;
 }
@@ -2454,7 +2454,7 @@ static void shutdown(struct slgt_info *info)
 {
 	unsigned long flags;
 
-	if (!(info->port.flags & ASYNC_INITIALIZED))
+	if (!tty_port_initialized(&info->port))
 		return;
 
 	DBGINFO(("%s shutdown\n", info->device_name));
@@ -2489,7 +2489,7 @@ static void shutdown(struct slgt_info *info)
 	if (info->port.tty)
 		set_bit(TTY_IO_ERROR, &info->port.tty->flags);
 
-	info->port.flags &= ~ASYNC_INITIALIZED;
+	tty_port_set_initialized(&info->port, 0);
 }
 
 static void program_hw(struct slgt_info *info)
@@ -2576,15 +2576,8 @@ static void change_params(struct slgt_info *info)
 	}
 	info->timeout += HZ/50;		/* Add .02 seconds of slop */
 
-	if (cflag & CRTSCTS)
-		info->port.flags |= ASYNC_CTS_FLOW;
-	else
-		info->port.flags &= ~ASYNC_CTS_FLOW;
-
-	if (cflag & CLOCAL)
-		info->port.flags &= ~ASYNC_CHECK_CD;
-	else
-		info->port.flags |= ASYNC_CHECK_CD;
+	tty_port_set_cts_flow(&info->port, cflag & CRTSCTS);
+	tty_port_set_check_carrier(&info->port, ~cflag & CLOCAL);
 
 	/* process tty input control flags */
 
@@ -3269,9 +3262,9 @@ static int block_til_ready(struct tty_struct *tty, struct file *filp,
 
 	DBGINFO(("%s block_til_ready\n", tty->driver->name));
 
-	if (filp->f_flags & O_NONBLOCK || tty->flags & (1 << TTY_IO_ERROR)){
+	if (filp->f_flags & O_NONBLOCK || tty_io_error(tty)) {
 		/* nonblock mode is set or port is not enabled */
-		port->flags |= ASYNC_NORMAL_ACTIVE;
+		tty_port_set_active(port, 1);
 		return 0;
 	}
 
@@ -3289,17 +3282,17 @@ static int block_til_ready(struct tty_struct *tty, struct file *filp,
 	add_wait_queue(&port->open_wait, &wait);
 
 	spin_lock_irqsave(&info->lock, flags);
-	atomic_dec(&port->count);
+	port->count--;
 	spin_unlock_irqrestore(&info->lock, flags);
 	port->blocked_open++;
 
 	while (1) {
-		if (C_BAUD(tty) && test_bit(ASYNCB_INITIALIZED, &port->flags))
+		if (C_BAUD(tty) && tty_port_initialized(port))
 			tty_port_raise_dtr_rts(port);
 
 		set_current_state(TASK_INTERRUPTIBLE);
 
-		if (tty_hung_up_p(filp) || !(port->flags & ASYNC_INITIALIZED)){
+		if (tty_hung_up_p(filp) || !tty_port_initialized(port)) {
 			retval = (port->flags & ASYNC_HUP_NOTIFY) ?
 					-EAGAIN : -ERESTARTSYS;
 			break;
@@ -3324,11 +3317,11 @@ static int block_til_ready(struct tty_struct *tty, struct file *filp,
 	remove_wait_queue(&port->open_wait, &wait);
 
 	if (!tty_hung_up_p(filp))
-		atomic_inc(&port->count);
+		port->count++;
 	port->blocked_open--;
 
 	if (!retval)
-		port->flags |= ASYNC_NORMAL_ACTIVE;
+		tty_port_set_active(port, 1);
 
 	DBGINFO(("%s block_til_ready ready, rc=%d\n", tty->driver->name, retval));
 	return retval;

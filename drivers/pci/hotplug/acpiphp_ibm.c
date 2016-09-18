@@ -138,6 +138,8 @@ static union apci_descriptor *ibm_slot_from_id(int id)
 	char *table;
 
 	size = ibm_get_table_from_acpi(&table);
+	if (size < 0)
+		return NULL;
 	des = (union apci_descriptor *)table;
 	if (memcmp(des->header.sig, "aPCI", 4) != 0)
 		goto ibm_slot_done;
@@ -463,9 +465,7 @@ static int __init ibm_acpiphp_init(void)
 		goto init_cleanup;
 	}
 
-	pax_open_kernel();
-	const_cast(ibm_apci_table_attr.size) = ibm_get_table_from_acpi(NULL);
-	pax_close_kernel();
+	ibm_apci_table_attr.size = ibm_get_table_from_acpi(NULL);
 	retval = sysfs_create_bin_file(sysdir, &ibm_apci_table_attr);
 
 	return retval;

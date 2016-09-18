@@ -328,7 +328,7 @@ static ssize_t blk_dropped_read(struct file *filp, char __user *buffer,
 	struct blk_trace *bt = filp->private_data;
 	char buf[16];
 
-	snprintf(buf, sizeof(buf), "%u\n", atomic_read_unchecked(&bt->dropped));
+	snprintf(buf, sizeof(buf), "%u\n", atomic_read(&bt->dropped));
 
 	return simple_read_from_buffer(buffer, count, ppos, buf, strlen(buf));
 }
@@ -380,7 +380,7 @@ static int blk_subbuf_start_callback(struct rchan_buf *buf, void *subbuf,
 		return 1;
 
 	bt = buf->chan->private_data;
-	atomic_inc_unchecked(&bt->dropped);
+	atomic_inc(&bt->dropped);
 	return 0;
 }
 
@@ -479,7 +479,7 @@ int do_blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 
 	bt->dir = dir;
 	bt->dev = dev;
-	atomic_set_unchecked(&bt->dropped, 0);
+	atomic_set(&bt->dropped, 0);
 	INIT_LIST_HEAD(&bt->running_list);
 
 	ret = -EIO;
@@ -1349,6 +1349,7 @@ static enum print_line_t print_one_line(struct trace_iterator *iter,
 	if (t->action == BLK_TN_MESSAGE) {
 		log_action(iter, long_act ? "message" : "m");
 		blk_log_msg(s, iter->ent);
+		return trace_handle_return(s);
 	}
 
 	if (unlikely(what == 0 || what >= ARRAY_SIZE(what2act)))
@@ -1551,6 +1552,7 @@ static const struct {
 	{ BLK_TC_COMPLETE,	"complete"	},
 	{ BLK_TC_FS,		"fs"		},
 	{ BLK_TC_PC,		"pc"		},
+	{ BLK_TC_NOTIFY,	"notify"	},
 	{ BLK_TC_AHEAD,		"ahead"		},
 	{ BLK_TC_META,		"meta"		},
 	{ BLK_TC_DISCARD,	"discard"	},

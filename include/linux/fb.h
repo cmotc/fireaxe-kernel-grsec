@@ -320,8 +320,7 @@ struct fb_ops {
 	/* called at KDB enter and leave time to prepare the console */
 	int (*fb_debug_enter)(struct fb_info *info);
 	int (*fb_debug_leave)(struct fb_info *info);
-} __do_const;
-typedef struct fb_ops __no_const fb_ops_no_const;
+};
 
 #ifdef CONFIG_FB_TILEBLITTING
 #define FB_TILE_CURSOR_NONE        0
@@ -674,6 +673,7 @@ static inline void __fb_pad_aligned_buffer(u8 *dst, u32 d_pitch,
 }
 
 /* drivers/video/fb_defio.c */
+int fb_deferred_io_mmap(struct fb_info *info, struct vm_area_struct *vma);
 extern void fb_deferred_io_init(struct fb_info *info);
 extern void fb_deferred_io_open(struct fb_info *info,
 				struct inode *inode,

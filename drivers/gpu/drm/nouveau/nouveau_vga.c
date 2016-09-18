@@ -4,7 +4,7 @@
 #include <drm/drmP.h>
 #include <drm/drm_crtc_helper.h>
 
-#include "nouveau_drm.h"
+#include "nouveau_drv.h"
 #include "nouveau_acpi.h"
 #include "nouveau_fbcon.h"
 #include "nouveau_vga.h"
@@ -73,7 +73,7 @@ nouveau_switcheroo_can_switch(struct pci_dev *pdev)
 	 * locking inversion with the driver load path. And the access here is
 	 * completely racy anyway. So don't bother with locking for now.
 	 */
-	return local_read(&dev->open_count) == 0;
+	return dev->open_count == 0;
 }
 
 static const struct vga_switcheroo_client_ops

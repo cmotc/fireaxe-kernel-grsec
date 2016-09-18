@@ -2987,7 +2987,7 @@ void t3_fatal_err(struct adapter *adapter)
  * this device has been detected.
  */
 static pci_ers_result_t t3_io_error_detected(struct pci_dev *pdev,
-					     enum pci_channel_state state)
+					     pci_channel_state_t state)
 {
 	struct adapter *adapter = pci_get_drvdata(pdev);
 

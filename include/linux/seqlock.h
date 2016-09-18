@@ -277,7 +277,10 @@ static inline void raw_write_seqcount_barrier(seqcount_t *s)
 
 static inline int raw_read_seqcount_latch(seqcount_t *s)
 {
-	return lockless_dereference(s->sequence);
+	int seq = READ_ONCE(s->sequence);
+	/* Pairs with the first smp_wmb() in raw_write_seqcount_latch() */
+	smp_read_barrier_depends();
+	return seq;
 }
 
 /**
@@ -331,7 +334,7 @@ static inline int raw_read_seqcount_latch(seqcount_t *s)
  *	unsigned seq, idx;
  *
  *	do {
- *		seq = lockless_dereference(latch->seq);
+ *		seq = raw_read_seqcount_latch(&latch->seq);
  *
  *		idx = seq & 0x01;
  *		entry = data_query(latch->data[idx], ...);
@@ -440,49 +443,42 @@ static inline unsigned read_seqretry(const seqlock_t *sl, unsigned start)
  * Acts like a normal spin_lock/unlock.
  * Don't need preempt_disable() because that is in the spin_lock already.
  */
-static inline void write_seqlock(seqlock_t *sl) __acquires(sl);
 static inline void write_seqlock(seqlock_t *sl)
 {
 	spin_lock(&sl->lock);
 	write_seqcount_begin(&sl->seqcount);
 }
 
-static inline void write_sequnlock(seqlock_t *sl) __releases(sl);
 static inline void write_sequnlock(seqlock_t *sl)
 {
 	write_seqcount_end(&sl->seqcount);
 	spin_unlock(&sl->lock);
 }
 
-static inline void write_seqlock_bh(seqlock_t *sl) __acquires(sl);
 static inline void write_seqlock_bh(seqlock_t *sl)
 {
 	spin_lock_bh(&sl->lock);
 	write_seqcount_begin(&sl->seqcount);
 }
 
-static inline void write_sequnlock_bh(seqlock_t *sl) __releases(sl);
 static inline void write_sequnlock_bh(seqlock_t *sl)
 {
 	write_seqcount_end(&sl->seqcount);
 	spin_unlock_bh(&sl->lock);
 }
 
-static inline void write_seqlock_irq(seqlock_t *sl) __acquires(sl);
 static inline void write_seqlock_irq(seqlock_t *sl)
 {
 	spin_lock_irq(&sl->lock);
 	write_seqcount_begin(&sl->seqcount);
 }
 
-static inline void write_sequnlock_irq(seqlock_t *sl) __releases(sl);
 static inline void write_sequnlock_irq(seqlock_t *sl)
 {
 	write_seqcount_end(&sl->seqcount);
 	spin_unlock_irq(&sl->lock);
 }
 
-static inline unsigned long __write_seqlock_irqsave(seqlock_t *sl) __acquires(sl);
 static inline unsigned long __write_seqlock_irqsave(seqlock_t *sl)
 {
 	unsigned long flags;
@@ -495,7 +491,6 @@ static inline unsigned long __write_seqlock_irqsave(seqlock_t *sl)
 #define write_seqlock_irqsave(lock, flags)				\
 	do { flags = __write_seqlock_irqsave(lock); } while (0)
 
-static inline void write_sequnlock_irqrestore(seqlock_t *sl, unsigned long flags) __releases(sl);
 static inline void
 write_sequnlock_irqrestore(seqlock_t *sl, unsigned long flags)
 {
@@ -508,13 +503,11 @@ write_sequnlock_irqrestore(seqlock_t *sl, unsigned long flags)
  * but doesn't update the sequence number. Acts like a normal spin_lock/unlock.
  * Don't need preempt_disable() because that is in the spin_lock already.
  */
-static inline void read_seqlock_excl(seqlock_t *sl) __acquires(sl);
 static inline void read_seqlock_excl(seqlock_t *sl)
 {
 	spin_lock(&sl->lock);
 }
 
-static inline void read_sequnlock_excl(seqlock_t *sl) __releases(sl);
 static inline void read_sequnlock_excl(seqlock_t *sl)
 {
 	spin_unlock(&sl->lock);

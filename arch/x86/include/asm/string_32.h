@@ -6,25 +6,25 @@
 /* Let gcc decide whether to inline or use the out of line functions */
 
 #define __HAVE_ARCH_STRCPY
-extern char *strcpy(char *dest, const char *src) __nocapture(2);
+extern char *strcpy(char *dest, const char *src);
 
 #define __HAVE_ARCH_STRNCPY
-extern char *strncpy(char *dest, const char *src, size_t count) __nocapture(2);
+extern char *strncpy(char *dest, const char *src, size_t count);
 
 #define __HAVE_ARCH_STRCAT
-extern char *strcat(char *dest, const char *src) __nocapture(2);
+extern char *strcat(char *dest, const char *src);
 
 #define __HAVE_ARCH_STRNCAT
-extern char *strncat(char *dest, const char *src, size_t count) __nocapture(2);
+extern char *strncat(char *dest, const char *src, size_t count);
 
 #define __HAVE_ARCH_STRCMP
-extern int strcmp(const char *cs, const char *ct) __nocapture(1, 2);
+extern int strcmp(const char *cs, const char *ct);
 
 #define __HAVE_ARCH_STRNCMP
-extern int strncmp(const char *cs, const char *ct, size_t count) __nocapture(1, 2);
+extern int strncmp(const char *cs, const char *ct, size_t count);
 
 #define __HAVE_ARCH_STRCHR
-extern char *strchr(const char *s, int c) __nocapture(1);
+extern char *strchr(const char *s, int c);
 
 #define __HAVE_ARCH_STRLEN
 extern size_t strlen(const char *s);
@@ -197,12 +197,12 @@ static inline void *__memcpy3d(void *to, const void *from, size_t len)
 #endif
 
 #define __HAVE_ARCH_MEMMOVE
-void *memmove(void *dest, const void *src, size_t n) __nocapture(2);
+void *memmove(void *dest, const void *src, size_t n);
 
 #define memcmp __builtin_memcmp
 
 #define __HAVE_ARCH_MEMCHR
-extern void *memchr(const void *cs, int c, size_t count) __nocapture(1);
+extern void *memchr(const void *cs, int c, size_t count);
 
 static inline void *__memset_generic(void *s, char c, size_t count)
 {
@@ -247,7 +247,7 @@ extern size_t strnlen(const char *s, size_t count);
 /* end of additional stuff */
 
 #define __HAVE_ARCH_STRSTR
-extern char *strstr(const char *cs, const char *ct) __nocapture(1, 2);
+extern char *strstr(const char *cs, const char *ct);
 
 /*
  * This looks horribly ugly, but the compiler can optimize it totally,

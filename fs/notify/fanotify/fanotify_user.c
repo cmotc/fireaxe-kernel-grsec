@@ -216,8 +216,8 @@ static ssize_t copy_event_to_user(struct fsnotify_group *group,
 
 	fd = fanotify_event_metadata.fd;
 	ret = -EFAULT;
-	if (fanotify_event_metadata.event_len > sizeof fanotify_event_metadata ||
-	    copy_to_user(buf, &fanotify_event_metadata, fanotify_event_metadata.event_len))
+	if (copy_to_user(buf, &fanotify_event_metadata,
+			 fanotify_event_metadata.event_len))
 		goto out_close_fd;
 
 #ifdef CONFIG_FANOTIFY_ACCESS_PERMISSIONS
@@ -846,6 +846,14 @@ SYSCALL_DEFINE5(fanotify_mark, int, fanotify_fd, unsigned int, flags,
 	if (mask & ~(FAN_ALL_EVENTS | FAN_EVENT_ON_CHILD))
 #endif
 		return -EINVAL;
+
+#ifdef CONFIG_FANOTIFY_ACCESS_PERMISSIONS
+	if (mask & FAN_ALL_PERM_EVENTS) {
+		pr_warn_once("%s (%d): Using fanotify permission checks may lead to deadlock; tainting kernel\n",
+			     current->comm, current->pid);
+		add_taint(TAINT_USER, LOCKDEP_STILL_OK);
+	}
+#endif
 
 	f = fdget(fanotify_fd);
 	if (unlikely(!f.file))

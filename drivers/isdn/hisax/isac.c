@@ -584,9 +584,8 @@ DC_Close_isac(struct IsdnCardState *cs)
 }
 
 static void
-dbusy_timer_handler(unsigned long _cs)
+dbusy_timer_handler(struct IsdnCardState *cs)
 {
-	struct IsdnCardState *cs = (struct IsdnCardState *)_cs;
 	struct PStack *stptr;
 	int	rbch, star;
 
@@ -678,7 +677,7 @@ void clear_pending_isac_ints(struct IsdnCardState *cs)
 void setup_isac(struct IsdnCardState *cs)
 {
 	INIT_WORK(&cs->tqueue, isac_bh);
-	cs->dbusytimer.function = dbusy_timer_handler;
+	cs->dbusytimer.function = (void *) dbusy_timer_handler;
 	cs->dbusytimer.data = (long) cs;
 	init_timer(&cs->dbusytimer);
 }

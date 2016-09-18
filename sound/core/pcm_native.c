@@ -3014,11 +3014,11 @@ int snd_pcm_kernel_ioctl(struct snd_pcm_substream *substream,
 	switch (substream->stream) {
 	case SNDRV_PCM_STREAM_PLAYBACK:
 		result = snd_pcm_playback_ioctl1(NULL, substream, cmd,
-						 (void __force_user *)arg);
+						 (void __user *)arg);
 		break;
 	case SNDRV_PCM_STREAM_CAPTURE:
 		result = snd_pcm_capture_ioctl1(NULL, substream, cmd,
-						(void __force_user *)arg);
+						(void __user *)arg);
 		break;
 	default:
 		result = -EINVAL;
@@ -3161,7 +3161,7 @@ static unsigned int snd_pcm_playback_poll(struct file *file, poll_table * wait)
 
 	substream = pcm_file->substream;
 	if (PCM_RUNTIME_CHECK(substream))
-		return -ENXIO;
+		return POLLOUT | POLLWRNORM | POLLERR;
 	runtime = substream->runtime;
 
 	poll_wait(file, &runtime->sleep, wait);
@@ -3200,7 +3200,7 @@ static unsigned int snd_pcm_capture_poll(struct file *file, poll_table * wait)
 
 	substream = pcm_file->substream;
 	if (PCM_RUNTIME_CHECK(substream))
-		return -ENXIO;
+		return POLLIN | POLLRDNORM | POLLERR;
 	runtime = substream->runtime;
 
 	poll_wait(file, &runtime->sleep, wait);

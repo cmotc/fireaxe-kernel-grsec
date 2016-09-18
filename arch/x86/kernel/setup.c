@@ -114,7 +114,6 @@
 #include <asm/prom.h>
 #include <asm/microcode.h>
 #include <asm/mmu_context.h>
-#include <asm/boot.h>
 
 /*
  * max_low_pfn_mapped: highest direct mapped pfn under 4GB
@@ -210,12 +209,10 @@ EXPORT_SYMBOL(boot_cpu_data);
 #endif
 
 
-#ifdef CONFIG_X86_64
-__visible unsigned long mmu_cr4_features __read_only = X86_CR4_PSE | X86_CR4_PAE | X86_CR4_PGE;
-#elif defined(CONFIG_X86_PAE)
-__visible unsigned long mmu_cr4_features __read_only = X86_CR4_PAE;
+#if !defined(CONFIG_X86_PAE) || defined(CONFIG_X86_64)
+__visible unsigned long mmu_cr4_features;
 #else
-__visible unsigned long mmu_cr4_features __read_only;
+__visible unsigned long mmu_cr4_features = X86_CR4_PAE;
 #endif
 
 /* Boot loader ID and version as integers, for the benefit of proc_dointvec */
@@ -402,11 +399,19 @@ static void __init reserve_initrd(void)
 
 	memblock_free(ramdisk_image, ramdisk_end - ramdisk_image);
 }
+
+static void __init early_initrd_acpi_init(void)
+{
+	early_acpi_table_init((void *)initrd_start, initrd_end - initrd_start);
+}
 #else
 static void __init early_reserve_initrd(void)
 {
 }
 static void __init reserve_initrd(void)
+{
+}
+static void __init early_initrd_acpi_init(void)
 {
 }
 #endif /* CONFIG_BLK_DEV_INITRD */
@@ -763,7 +768,7 @@ static void __init trim_bios_range(void)
 	 * area (640->1Mb) as ram even though it is not.
 	 * take them out.
 	 */
-	e820_remove_range(ISA_START_ADDRESS, ISA_END_ADDRESS - ISA_START_ADDRESS, E820_RAM, 1);
+	e820_remove_range(BIOS_BEGIN, BIOS_END - BIOS_BEGIN, E820_RAM, 1);
 
 	sanitize_e820_map(e820.map, ARRAY_SIZE(e820.map), &e820.nr_map);
 }
@@ -771,7 +776,7 @@ static void __init trim_bios_range(void)
 /* called before trim_bios_range() to spare extra sanitize */
 static void __init e820_add_kernel_range(void)
 {
-	u64 start = __pa_symbol(ktla_ktva((unsigned long)_text));
+	u64 start = __pa_symbol(_text);
 	u64 size = __pa_symbol(_end) - start;
 
 	/*
@@ -852,8 +857,8 @@ dump_kernel_offset(struct notifier_block *self, unsigned long v, void *p)
 
 void __init setup_arch(char **cmdline_p)
 {
-	memblock_reserve(__pa_symbol(ktla_ktva((unsigned long)_text)),
-			 (unsigned long)__bss_stop - ktla_ktva((unsigned long)_text));
+	memblock_reserve(__pa_symbol(_text),
+			 (unsigned long)__bss_stop - (unsigned long)_text);
 
 	early_reserve_initrd();
 
@@ -946,16 +951,16 @@ void __init setup_arch(char **cmdline_p)
 
 	if (!boot_params.hdr.root_flags)
 		root_mountflags &= ~MS_RDONLY;
-	init_mm.start_code = ktla_ktva((unsigned long)_text);
-	init_mm.end_code = ktla_ktva((unsigned long)_etext);
-	init_mm.end_data = (unsigned long)_edata;
+	init_mm.start_code = (unsigned long) _text;
+	init_mm.end_code = (unsigned long) _etext;
+	init_mm.end_data = (unsigned long) _edata;
 	init_mm.brk = _brk_end;
 
 	mpx_mm_init(&init_mm);
 
-	code_resource.start = __pa_symbol(ktla_ktva((unsigned long)_text));
-	code_resource.end = __pa_symbol(ktla_ktva((unsigned long)_etext))-1;
-	data_resource.start = __pa_symbol(_sdata);
+	code_resource.start = __pa_symbol(_text);
+	code_resource.end = __pa_symbol(_etext)-1;
+	data_resource.start = __pa_symbol(_etext);
 	data_resource.end = __pa_symbol(_edata)-1;
 	bss_resource.start = __pa_symbol(__bss_start);
 	bss_resource.end = __pa_symbol(__bss_stop)-1;
@@ -1148,9 +1153,7 @@ void __init setup_arch(char **cmdline_p)
 
 	reserve_initrd();
 
-#if defined(CONFIG_ACPI) && defined(CONFIG_BLK_DEV_INITRD)
-	acpi_initrd_override((void *)initrd_start, initrd_end - initrd_start);
-#endif
+	early_initrd_acpi_init();
 
 	vsmp_init();
 

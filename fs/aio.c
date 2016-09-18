@@ -450,7 +450,7 @@ static int aio_setup_ring(struct kioctx *ctx)
 	size += sizeof(struct io_event) * nr_events;
 
 	nr_pages = PFN_UP(size);
-	if (nr_pages <= 0)
+	if (nr_pages < 0)
 		return -EINVAL;
 
 	file = aio_private_file(ctx, nr_pages);
@@ -496,7 +496,12 @@ static int aio_setup_ring(struct kioctx *ctx)
 	ctx->mmap_size = nr_pages * PAGE_SIZE;
 	pr_debug("attempting mmap of %lu bytes\n", ctx->mmap_size);
 
-	down_write(&mm->mmap_sem);
+	if (down_write_killable(&mm->mmap_sem)) {
+		ctx->mmap_size = 0;
+		aio_free_ring(ctx);
+		return -EINTR;
+	}
+
 	ctx->mmap_base = do_mmap_pgoff(ctx->aio_ring_file, 0, ctx->mmap_size,
 				       PROT_READ | PROT_WRITE,
 				       MAP_SHARED, 0, &unused);
@@ -1446,8 +1451,6 @@ rw_common:
 			kfree(iovec);
 			return ret;
 		}
-
-		len = ret;
 
 		if (rw == WRITE)
 			file_start_write(file);

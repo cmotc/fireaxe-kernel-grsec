@@ -366,34 +366,22 @@ static void to_utf8(struct vc_data *vc, uint c)
 
 static void do_compute_shiftstate(void)
 {
-	unsigned int i, j, k, sym, val;
+	unsigned int k, sym, val;
 
 	shift_state = 0;
 	memset(shift_down, 0, sizeof(shift_down));
 
-	for (i = 0; i < ARRAY_SIZE(key_down); i++) {
-
-		if (!key_down[i])
+	for_each_set_bit(k, key_down, min(NR_KEYS, KEY_CNT)) {
+		sym = U(key_maps[0][k]);
+		if (KTYP(sym) != KT_SHIFT && KTYP(sym) != KT_SLOCK)
 			continue;
 
-		k = i * BITS_PER_LONG;
+		val = KVAL(sym);
+		if (val == KVAL(K_CAPSSHIFT))
+			val = KVAL(K_SHIFT);
 
-		for (j = 0; j < BITS_PER_LONG; j++, k++) {
-
-			if (!test_bit(k, key_down))
-				continue;
-
-			sym = U(key_maps[0][k]);
-			if (KTYP(sym) != KT_SHIFT && KTYP(sym) != KT_SLOCK)
-				continue;
-
-			val = KVAL(sym);
-			if (val == KVAL(K_CAPSSHIFT))
-				val = KVAL(K_SHIFT);
-
-			shift_down[val]++;
-			shift_state |= (1 << val);
-		}
+		shift_down[val]++;
+		shift_state |= BIT(val);
 	}
 }
 
@@ -642,16 +630,6 @@ static void k_spec(struct vc_data *vc, unsigned char value, char up_flag)
 	     kbd->kbdmode == VC_OFF) &&
 	     value != KVAL(K_SAK))
 		return;		/* SAK is allowed even in raw mode */
-
-#if defined(CONFIG_GRKERNSEC_PROC) || defined(CONFIG_GRKERNSEC_PROC_MEMMAP)
-	{
-		void *func = fn_handler[value];
-		if (func == fn_show_state || func == fn_show_ptregs ||
-		    func == fn_show_mem)
-			return;
-	}
-#endif
-
 	fn_handler[value](vc);
 }
 
@@ -1886,6 +1864,9 @@ int vt_do_kdsk_ioctl(int cmd, struct kbentry __user *user_kbe, int perm,
 	if (copy_from_user(&tmp, user_kbe, sizeof(struct kbentry)))
 		return -EFAULT;
 
+	if (!capable(CAP_SYS_TTY_CONFIG))
+		perm = 0;
+
 	switch (cmd) {
 	case KDGKBENT:
 		/* Ensure another thread doesn't free it under us */
@@ -1900,9 +1881,6 @@ int vt_do_kdsk_ioctl(int cmd, struct kbentry __user *user_kbe, int perm,
 		spin_unlock_irqrestore(&kbd_event_lock, flags);
 		return put_user(val, &user_kbe->kb_value);
 	case KDSKBENT:
-		if (!capable(CAP_SYS_TTY_CONFIG))
-			perm = 0;
-
 		if (!perm)
 			return -EPERM;
 		if (!i && v == K_NOSUCHMAP) {
@@ -1993,6 +1971,9 @@ int vt_do_kdgkb_ioctl(int cmd, struct kbsentry __user *user_kdgkb, int perm)
 	int i, j, k;
 	int ret;
 
+	if (!capable(CAP_SYS_TTY_CONFIG))
+		perm = 0;
+
 	kbs = kmalloc(sizeof(*kbs), GFP_KERNEL);
 	if (!kbs) {
 		ret = -ENOMEM;
@@ -2026,9 +2007,6 @@ int vt_do_kdgkb_ioctl(int cmd, struct kbsentry __user *user_kdgkb, int perm)
 		kfree(kbs);
 		return ((p && *p) ? -EOVERFLOW : 0);
 	case KDSKBSENT:
-		if (!capable(CAP_SYS_TTY_CONFIG))
-			perm = 0;
-
 		if (!perm) {
 			ret = -EPERM;
 			goto reterr;

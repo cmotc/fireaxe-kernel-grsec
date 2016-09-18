@@ -74,6 +74,7 @@ enum {
 	RDS_CONN_CONNECTING,
 	RDS_CONN_DISCONNECTING,
 	RDS_CONN_UP,
+	RDS_CONN_RESETTING,
 	RDS_CONN_ERROR,
 };
 
@@ -464,7 +465,7 @@ struct rds_transport {
 	void (*sync_mr)(void *trans_private, int direction);
 	void (*free_mr)(void *trans_private, int invalidate);
 	void (*flush_mrs)(void);
-} __do_const;
+};
 
 struct rds_sock {
 	struct sock		rs_sk;
@@ -813,6 +814,7 @@ void rds_connect_worker(struct work_struct *);
 void rds_shutdown_worker(struct work_struct *);
 void rds_send_worker(struct work_struct *);
 void rds_recv_worker(struct work_struct *);
+void rds_connect_path_complete(struct rds_connection *conn, int curr);
 void rds_connect_complete(struct rds_connection *conn);
 
 /* transport.c */

@@ -1110,23 +1110,23 @@ async_copy_data(int frombio, struct bio *bio, struct page **page,
 	struct bio_vec bvl;
 	struct bvec_iter iter;
 	struct page *bio_page;
-	s64 page_offset;
+	int page_offset;
 	struct async_submit_ctl submit;
 	enum async_tx_flags flags = 0;
 
 	if (bio->bi_iter.bi_sector >= sector)
-		page_offset = (s64)(bio->bi_iter.bi_sector - sector) * 512;
+		page_offset = (signed)(bio->bi_iter.bi_sector - sector) * 512;
 	else
-		page_offset = (s64)(sector - bio->bi_iter.bi_sector) * -512;
+		page_offset = (signed)(sector - bio->bi_iter.bi_sector) * -512;
 
 	if (frombio)
 		flags |= ASYNC_TX_FENCE;
 	init_async_submit(&submit, flags, tx, NULL, NULL, NULL);
 
 	bio_for_each_segment(bvl, bio, iter) {
-		s64 len = bvl.bv_len;
-		s64 clen;
-		s64 b_offset = 0;
+		int len = bvl.bv_len;
+		int clen;
+		int b_offset = 0;
 
 		if (page_offset < 0) {
 			b_offset = -page_offset;
@@ -2017,10 +2017,6 @@ static int grow_one_stripe(struct r5conf *conf, gfp_t gfp)
 	return 1;
 }
 
-#ifdef CONFIG_GRKERNSEC_HIDESYM
-static atomic_unchecked_t raid5_cache_id = ATOMIC_INIT(0);
-#endif
-
 static int grow_stripes(struct r5conf *conf, int num)
 {
 	struct kmem_cache *sc;
@@ -2031,11 +2027,7 @@ static int grow_stripes(struct r5conf *conf, int num)
 			"raid%d-%s", conf->level, mdname(conf->mddev));
 	else
 		sprintf(conf->cache_name[0],
-#ifdef CONFIG_GRKERNSEC_HIDESYM
-			"raid%d-%08lx", conf->level, atomic_inc_return_unchecked(&raid5_cache_id));
-#else
 			"raid%d-%p", conf->level, conf->mddev);
-#endif
 	sprintf(conf->cache_name[1], "%s-alt", conf->cache_name[0]);
 
 	conf->active_name = 0;
@@ -2338,21 +2330,21 @@ static void raid5_end_read_request(struct bio * bi)
 				mdname(conf->mddev), STRIPE_SECTORS,
 				(unsigned long long)s,
 				bdevname(rdev->bdev, b));
-			atomic_add_unchecked(STRIPE_SECTORS, &rdev->corrected_errors);
+			atomic_add(STRIPE_SECTORS, &rdev->corrected_errors);
 			clear_bit(R5_ReadError, &sh->dev[i].flags);
 			clear_bit(R5_ReWrite, &sh->dev[i].flags);
 		} else if (test_bit(R5_ReadNoMerge, &sh->dev[i].flags))
 			clear_bit(R5_ReadNoMerge, &sh->dev[i].flags);
 
-		if (atomic_read_unchecked(&rdev->read_errors))
-			atomic_set_unchecked(&rdev->read_errors, 0);
+		if (atomic_read(&rdev->read_errors))
+			atomic_set(&rdev->read_errors, 0);
 	} else {
 		const char *bdn = bdevname(rdev->bdev, b);
 		int retry = 0;
 		int set_bad = 0;
 
 		clear_bit(R5_UPTODATE, &sh->dev[i].flags);
-		atomic_inc_unchecked(&rdev->read_errors);
+		atomic_inc(&rdev->read_errors);
 		if (test_bit(R5_ReadRepl, &sh->dev[i].flags))
 			printk_ratelimited(
 				KERN_WARNING
@@ -2380,7 +2372,7 @@ static void raid5_end_read_request(struct bio * bi)
 				mdname(conf->mddev),
 				(unsigned long long)s,
 				bdn);
-		} else if (atomic_read_unchecked(&rdev->read_errors)
+		} else if (atomic_read(&rdev->read_errors)
 			 > conf->max_nr_stripes)
 			printk(KERN_WARNING
 			       "md/raid:%s: Too many read errors, failing device %s.\n",
@@ -2522,8 +2514,8 @@ static void raid5_error(struct mddev *mddev, struct md_rdev *rdev)
 
 	set_bit(Blocked, &rdev->flags);
 	set_bit(Faulty, &rdev->flags);
-	set_bit(MD_CHANGE_DEVS, &mddev->flags);
-	set_bit(MD_CHANGE_PENDING, &mddev->flags);
+	set_mask_bits(&mddev->flags, 0,
+		      BIT(MD_CHANGE_DEVS) | BIT(MD_CHANGE_PENDING));
 	printk(KERN_ALERT
 	       "md/raid:%s: Disk failure on %s, disabling device.\n"
 	       "md/raid:%s: Operation continuing on %d devices.\n",
@@ -3750,7 +3742,7 @@ static void handle_parity_checks5(struct r5conf *conf, struct stripe_head *sh,
 			 */
 			set_bit(STRIPE_INSYNC, &sh->state);
 		else {
-			atomic64_add_unchecked(STRIPE_SECTORS, &conf->mddev->resync_mismatches);
+			atomic64_add(STRIPE_SECTORS, &conf->mddev->resync_mismatches);
 			if (test_bit(MD_RECOVERY_CHECK, &conf->mddev->recovery))
 				/* don't try to repair!! */
 				set_bit(STRIPE_INSYNC, &sh->state);
@@ -3902,7 +3894,7 @@ static void handle_parity_checks6(struct r5conf *conf, struct stripe_head *sh,
 				 */
 			}
 		} else {
-			atomic64_add_unchecked(STRIPE_SECTORS, &conf->mddev->resync_mismatches);
+			atomic64_add(STRIPE_SECTORS, &conf->mddev->resync_mismatches);
 			if (test_bit(MD_RECOVERY_CHECK, &conf->mddev->recovery))
 				/* don't try to repair!! */
 				set_bit(STRIPE_INSYNC, &sh->state);
@@ -7580,8 +7572,10 @@ static void raid5_finish_reshape(struct mddev *mddev)
 
 		if (mddev->delta_disks > 0) {
 			md_set_array_sectors(mddev, raid5_size(mddev, 0, 0));
-			set_capacity(mddev->gendisk, mddev->array_sectors);
-			revalidate_disk(mddev->gendisk);
+			if (mddev->queue) {
+				set_capacity(mddev->gendisk, mddev->array_sectors);
+				revalidate_disk(mddev->gendisk);
+			}
 		} else {
 			int d;
 			spin_lock_irq(&conf->device_lock);

@@ -6,12 +6,12 @@
 
 /*  we can't #include <linux/syscalls.h> here,
     but tell gcc to not warn with -Wmissing-prototypes  */
-asmlinkage long sys_ni_syscall(unsigned long, unsigned long, unsigned long, unsigned long, unsigned long, unsigned long);
+asmlinkage long sys_ni_syscall(void);
 
 /*
  * Non-implemented system calls get redirected here.
  */
-asmlinkage long sys_ni_syscall(unsigned long a, unsigned long b, unsigned long c, unsigned long d, unsigned long e, unsigned long f)
+asmlinkage long sys_ni_syscall(void)
 {
 	return -ENOSYS;
 }

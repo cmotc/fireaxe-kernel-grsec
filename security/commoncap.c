@@ -111,7 +111,7 @@ int cap_capable(const struct cred *cred, struct user_namespace *targ_ns,
  * Determine whether the current process may set the system clock and timezone
  * information, returning 0 if permission granted, -ve if denied.
  */
-int cap_settime(const struct timespec *ts, const struct timezone *tz)
+int cap_settime(const struct timespec64 *ts, const struct timezone *tz)
 {
 	if (!capable(CAP_SYS_TIME))
 		return -EPERM;
@@ -313,7 +313,7 @@ int cap_inode_need_killpriv(struct dentry *dentry)
 	if (!inode->i_op->getxattr)
 	       return 0;
 
-	error = inode->i_op->getxattr(dentry, XATTR_NAME_CAPS, NULL, 0);
+	error = inode->i_op->getxattr(dentry, inode, XATTR_NAME_CAPS, NULL, 0);
 	if (error <= 0)
 		return 0;
 	return 1;
@@ -397,8 +397,8 @@ int get_vfs_caps_from_disk(const struct dentry *dentry, struct cpu_vfs_cap_data 
 	if (!inode || !inode->i_op->getxattr)
 		return -ENODATA;
 
-	size = inode->i_op->getxattr((struct dentry *)dentry, XATTR_NAME_CAPS, &caps,
-				   XATTR_CAPS_SZ);
+	size = inode->i_op->getxattr((struct dentry *)dentry, inode,
+				     XATTR_NAME_CAPS, &caps, XATTR_CAPS_SZ);
 	if (size == -ENODATA || size == -EOPNOTSUPP)
 		/* no data, that's ok */
 		return -ENODATA;
@@ -434,32 +434,6 @@ int get_vfs_caps_from_disk(const struct dentry *dentry, struct cpu_vfs_cap_data 
 
 	cpu_caps->permitted.cap[CAP_LAST_U32] &= CAP_LAST_U32_VALID_MASK;
 	cpu_caps->inheritable.cap[CAP_LAST_U32] &= CAP_LAST_U32_VALID_MASK;
-
-	return 0;
-}
-
-/* returns:
-	1 for suid privilege
-	2 for sgid privilege
-	3 for fscap privilege
-*/
-int is_privileged_binary(const struct dentry *dentry)
-{
-	struct cpu_vfs_cap_data capdata;
-	struct inode *inode = dentry->d_inode;
-
-	if (!inode || S_ISDIR(inode->i_mode))
-		return 0;
-
-	if (inode->i_mode & S_ISUID)
-		return 1;
-	if ((inode->i_mode & (S_ISGID | S_IXGRP)) == (S_ISGID | S_IXGRP))
-		return 2;
-
-	if (!get_vfs_caps_from_disk(dentry, &capdata)) {
-		if (!cap_isclear(capdata.inheritable) || !cap_isclear(capdata.permitted))
-			return 3;
-	}
 
 	return 0;
 }
@@ -653,9 +627,6 @@ int cap_bprm_secureexec(struct linux_binprm *bprm)
 {
 	const struct cred *cred = current_cred();
 	kuid_t root_uid = make_kuid(cred->user_ns, 0);
-
-	if (gr_acl_enable_at_secure())
-		return 1;
 
 	if (!uid_eq(cred->uid, root_uid)) {
 		if (bprm->cap_effective)

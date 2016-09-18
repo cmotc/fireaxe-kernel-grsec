@@ -961,10 +961,6 @@ static void empty(void)
 {
 }
 
-static void empty2(int i)
-{
-}
-
 static void (*floppy_work_fn)(void);
 
 static void floppy_work_workfn(struct work_struct *work)
@@ -1957,14 +1953,14 @@ static const struct cont_t wakeup_cont = {
 	.interrupt	= empty,
 	.redo		= do_wakeup,
 	.error		= empty,
-	.done		= empty2
+	.done		= (done_f)empty
 };
 
 static const struct cont_t intr_cont = {
 	.interrupt	= empty,
 	.redo		= process_fd_request,
 	.error		= empty,
-	.done		= empty2
+	.done		= (done_f)empty
 };
 
 static int wait_til_done(void (*handler)(void), bool interruptible)
@@ -3667,11 +3663,6 @@ static int floppy_open(struct block_device *bdev, fmode_t mode)
 
 	opened_bdev[drive] = bdev;
 
-	if (!(mode & (FMODE_READ|FMODE_WRITE))) {
-		res = -EINVAL;
-		goto out;
-	}
-
 	res = -ENXIO;
 
 	if (!floppy_track_buffer) {
@@ -3715,13 +3706,15 @@ static int floppy_open(struct block_device *bdev, fmode_t mode)
 	if (UFDCS->rawcmd == 1)
 		UFDCS->rawcmd = 2;
 
-	UDRS->last_checked = 0;
-	clear_bit(FD_OPEN_SHOULD_FAIL_BIT, &UDRS->flags);
-	check_disk_change(bdev);
-	if (test_bit(FD_DISK_CHANGED_BIT, &UDRS->flags))
-		goto out;
-	if (test_bit(FD_OPEN_SHOULD_FAIL_BIT, &UDRS->flags))
-		goto out;
+	if (mode & (FMODE_READ|FMODE_WRITE)) {
+		UDRS->last_checked = 0;
+		clear_bit(FD_OPEN_SHOULD_FAIL_BIT, &UDRS->flags);
+		check_disk_change(bdev);
+		if (test_bit(FD_DISK_CHANGED_BIT, &UDRS->flags))
+			goto out;
+		if (test_bit(FD_OPEN_SHOULD_FAIL_BIT, &UDRS->flags))
+			goto out;
+	}
 
 	res = -EROFS;
 

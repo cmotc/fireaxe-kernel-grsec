@@ -444,27 +444,19 @@ static int vidioc_querycap(struct file *file, void *priv,
 static int vidioc_s_std(struct file *file, void *priv, v4l2_std_id std)
 {
 	struct sta2x11_vip *vip = video_drvdata(file);
-	v4l2_std_id oldstd = vip->std, newstd;
-	int status;
 
-	if (V4L2_STD_ALL == std) {
-		v4l2_subdev_call(vip->decoder, video, s_std, std);
-		ssleep(2);
-		v4l2_subdev_call(vip->decoder, video, querystd, &newstd);
-		v4l2_subdev_call(vip->decoder, video, g_input_status, &status);
-		if (status & V4L2_IN_ST_NO_SIGNAL)
+	/*
+	 * This is here for backwards compatibility only.
+	 * The use of V4L2_STD_ALL to trigger a querystd is non-standard.
+	 */
+	if (std == V4L2_STD_ALL) {
+		v4l2_subdev_call(vip->decoder, video, querystd, &std);
+		if (std == V4L2_STD_UNKNOWN)
 			return -EIO;
-		std = vip->std = newstd;
-		if (oldstd != std) {
-			if (V4L2_STD_525_60 & std)
-				vip->format = formats_60[0];
-			else
-				vip->format = formats_50[0];
-		}
-		return 0;
 	}
 
-	if (oldstd != std) {
+	if (vip->std != std) {
+		vip->std = std;
 		if (V4L2_STD_525_60 & std)
 			vip->format = formats_60[0];
 		else
@@ -786,9 +778,8 @@ static struct video_device video_dev_template = {
  *
  * IRQ_HANDLED, interrupt done.
  */
-static irqreturn_t vip_irq(int irq, void *_vip)
+static irqreturn_t vip_irq(int irq, struct sta2x11_vip *vip)
 {
-	struct sta2x11_vip *vip = _vip;
 	unsigned int status;
 
 	status = reg_read(vip, DVP_ITS);
@@ -1080,7 +1071,7 @@ static int sta2x11_vip_init_one(struct pci_dev *pdev,
 	spin_lock_init(&vip->slock);
 
 	ret = request_irq(pdev->irq,
-			  vip_irq,
+			  (irq_handler_t) vip_irq,
 			  IRQF_SHARED, KBUILD_MODNAME, vip);
 	if (ret) {
 		dev_err(&pdev->dev, "request_irq failed\n");

@@ -131,7 +131,7 @@ int drm_open(struct inode *inode, struct file *filp)
 		return PTR_ERR(minor);
 
 	dev = minor->dev;
-	if (local_inc_return(&dev->open_count) == 1)
+	if (!dev->open_count++)
 		need_setup = 1;
 
 	/* share address_space across all char-devs of a single device */
@@ -148,7 +148,7 @@ int drm_open(struct inode *inode, struct file *filp)
 	return 0;
 
 err_undo:
-	local_dec(&dev->open_count);
+	dev->open_count--;
 	drm_minor_release(minor);
 	return retcode;
 }
@@ -297,9 +297,9 @@ static int drm_open_helper(struct file *filp, struct drm_minor *minor)
 	}
 	mutex_unlock(&dev->master_mutex);
 
-	mutex_lock(&dev->struct_mutex);
+	mutex_lock(&dev->filelist_mutex);
 	list_add(&priv->lhead, &dev->filelist);
-	mutex_unlock(&dev->struct_mutex);
+	mutex_unlock(&dev->filelist_mutex);
 
 #ifdef __alpha__
 	/*
@@ -381,14 +381,26 @@ static void drm_events_release(struct drm_file *file_priv)
  */
 static void drm_legacy_dev_reinit(struct drm_device *dev)
 {
-	if (drm_core_check_feature(dev, DRIVER_MODESET))
-		return;
+	if (dev->irq_enabled)
+		drm_irq_uninstall(dev);
+
+	mutex_lock(&dev->struct_mutex);
+
+	drm_legacy_agp_clear(dev);
+
+	drm_legacy_sg_cleanup(dev);
+	drm_legacy_vma_flush(dev);
+	drm_legacy_dma_takedown(dev);
+
+	mutex_unlock(&dev->struct_mutex);
 
 	dev->sigdata.lock = NULL;
 
 	dev->context_flag = 0;
 	dev->last_context = 0;
 	dev->if_version = 0;
+
+	DRM_DEBUG("lastclose completed\n");
 }
 
 /*
@@ -400,7 +412,7 @@ static void drm_legacy_dev_reinit(struct drm_device *dev)
  *
  * \sa drm_device
  */
-int drm_lastclose(struct drm_device * dev)
+void drm_lastclose(struct drm_device * dev)
 {
 	DRM_DEBUG("\n");
 
@@ -408,23 +420,8 @@ int drm_lastclose(struct drm_device * dev)
 		dev->driver->lastclose(dev);
 	DRM_DEBUG("driver lastclose completed\n");
 
-	if (dev->irq_enabled && !drm_core_check_feature(dev, DRIVER_MODESET))
-		drm_irq_uninstall(dev);
-
-	mutex_lock(&dev->struct_mutex);
-
-	drm_agp_clear(dev);
-
-	drm_legacy_sg_cleanup(dev);
-	drm_legacy_vma_flush(dev);
-	drm_legacy_dma_takedown(dev);
-
-	mutex_unlock(&dev->struct_mutex);
-
-	drm_legacy_dev_reinit(dev);
-
-	DRM_DEBUG("lastclose completed\n");
-	return 0;
+	if (!drm_core_check_feature(dev, DRIVER_MODESET))
+		drm_legacy_dev_reinit(dev);
 }
 
 /**
@@ -445,14 +442,16 @@ int drm_release(struct inode *inode, struct file *filp)
 	struct drm_file *file_priv = filp->private_data;
 	struct drm_minor *minor = file_priv->minor;
 	struct drm_device *dev = minor->dev;
-	int retcode = 0;
 
 	mutex_lock(&drm_global_mutex);
 
-	DRM_DEBUG("open_count = %ld\n", local_read(&dev->open_count));
+	DRM_DEBUG("open_count = %d\n", dev->open_count);
+
+	mutex_lock(&dev->filelist_mutex);
+	list_del(&file_priv->lhead);
+	mutex_unlock(&dev->filelist_mutex);
 
 	mutex_lock(&dev->struct_mutex);
-	list_del(&file_priv->lhead);
 	if (file_priv->magic)
 		idr_remove(&file_priv->master->magic_map, file_priv->magic);
 	mutex_unlock(&dev->struct_mutex);
@@ -464,10 +463,10 @@ int drm_release(struct inode *inode, struct file *filp)
 	 * Begin inline drm_release
 	 */
 
-	DRM_DEBUG("pid = %d, device = 0x%lx, open_count = %ld\n",
+	DRM_DEBUG("pid = %d, device = 0x%lx, open_count = %d\n",
 		  task_pid_nr(current),
 		  (long)old_encode_dev(file_priv->minor->kdev->devt),
-		  local_read(&dev->open_count));
+		  dev->open_count);
 
 	/* if the master has gone away we can't do anything with the lock */
 	if (file_priv->minor->master)
@@ -537,8 +536,8 @@ int drm_release(struct inode *inode, struct file *filp)
 	 * End inline drm_release
 	 */
 
-	if (local_dec_and_test(&dev->open_count)) {
-		retcode = drm_lastclose(dev);
+	if (!--dev->open_count) {
+		drm_lastclose(dev);
 		if (drm_device_is_unplugged(dev))
 			drm_put_dev(dev);
 	}
@@ -546,7 +545,7 @@ int drm_release(struct inode *inode, struct file *filp)
 
 	drm_minor_release(minor);
 
-	return retcode;
+	return 0;
 }
 EXPORT_SYMBOL(drm_release);
 
@@ -676,11 +675,6 @@ unsigned int drm_poll(struct file *filp, struct poll_table_struct *wait)
 }
 EXPORT_SYMBOL(drm_poll);
 
-static void drm_pending_event_destroy(struct drm_pending_event *event)
-{
-	kfree(event);
-}
-
 /**
  * drm_event_reserve_init_locked - init a DRM event and reserve space for it
  * @dev: DRM device
@@ -720,7 +714,7 @@ int drm_event_reserve_init_locked(struct drm_device *dev,
 	p->file_priv = file_priv;
 
 	/* we *could* pass this in as arg, but everyone uses kfree: */
-	p->destroy = drm_pending_event_destroy;
+	p->destroy = (void (*) (struct drm_pending_event *)) kfree;
 
 	return 0;
 }

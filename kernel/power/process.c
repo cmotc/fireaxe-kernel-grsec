@@ -34,7 +34,6 @@ static int try_to_freeze_tasks(bool user_only)
 	unsigned int elapsed_msecs;
 	bool wakeup = false;
 	int sleep_usecs = USEC_PER_MSEC;
-	bool timedout = false;
 
 	start = ktime_get_boottime();
 
@@ -45,20 +44,13 @@ static int try_to_freeze_tasks(bool user_only)
 
 	while (true) {
 		todo = 0;
-		if (time_after(jiffies, end_time))
-			timedout = true;
 		read_lock(&tasklist_lock);
 		for_each_process_thread(g, p) {
 			if (p == current || !freeze_task(p))
 				continue;
 
-			if (!freezer_should_skip(p)) {
+			if (!freezer_should_skip(p))
 				todo++;
-				if (timedout) {
-					printk(KERN_ERR "Task refusing to freeze:\n");
-					sched_show_task(p);
-				}
-			}
 		}
 		read_unlock(&tasklist_lock);
 
@@ -67,7 +59,7 @@ static int try_to_freeze_tasks(bool user_only)
 			todo += wq_busy;
 		}
 
-		if (!todo || timedout)
+		if (!todo || time_after(jiffies, end_time))
 			break;
 
 		if (pm_wakeup_pending()) {
@@ -153,6 +145,18 @@ int freeze_processes(void)
 	 */
 	if (!error && !oom_killer_disable())
 		error = -EBUSY;
+
+	/*
+	 * There is a hard to fix race between oom_reaper kernel thread
+	 * and oom_killer_disable. oom_reaper calls exit_oom_victim
+	 * before the victim reaches exit_mm so try to freeze all the tasks
+	 * again and catch such a left over task.
+	 */
+	if (!error) {
+		pr_info("Double checking all user space processes after OOM killer disable... ");
+		error = try_to_freeze_tasks(true);
+		pr_cont("\n");
+	}
 
 	if (error)
 		thaw_processes();

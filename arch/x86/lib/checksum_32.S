@@ -28,8 +28,7 @@
 #include <linux/linkage.h>
 #include <asm/errno.h>
 #include <asm/asm.h>
-#include <asm/segment.h>
-
+				
 /*
  * computes a partial checksum, e.g. for TCP/UDP fragments
  */
@@ -281,22 +280,7 @@ unsigned int csum_partial_copy_generic (const char *src, char *dst,
 
 #define ARGBASE 16		
 #define FP		12
-
-ENTRY(csum_partial_copy_generic_to_user)
-
-#ifdef CONFIG_PAX_MEMORY_UDEREF
-	pushl %gs
-	popl %es
-	jmp csum_partial_copy_generic
-#endif
-
-ENTRY(csum_partial_copy_generic_from_user)
-
-#ifdef CONFIG_PAX_MEMORY_UDEREF
-	pushl %gs
-	popl %ds
-#endif
-
+		
 ENTRY(csum_partial_copy_generic)
 	subl  $4,%esp	
 	pushl %edi
@@ -315,7 +299,7 @@ ENTRY(csum_partial_copy_generic)
 	jmp 4f
 SRC(1:	movw (%esi), %bx	)
 	addl $2, %esi
-DST(	movw %bx, %es:(%edi)	)
+DST(	movw %bx, (%edi)	)
 	addl $2, %edi
 	addw %bx, %ax	
 	adcl $0, %eax
@@ -327,30 +311,30 @@ DST(	movw %bx, %es:(%edi)	)
 SRC(1:	movl (%esi), %ebx	)
 SRC(	movl 4(%esi), %edx	)
 	adcl %ebx, %eax
-DST(	movl %ebx, %es:(%edi)	)
+DST(	movl %ebx, (%edi)	)
 	adcl %edx, %eax
-DST(	movl %edx, %es:4(%edi)	)
+DST(	movl %edx, 4(%edi)	)
 
 SRC(	movl 8(%esi), %ebx	)
 SRC(	movl 12(%esi), %edx	)
 	adcl %ebx, %eax
-DST(	movl %ebx, %es:8(%edi)	)
+DST(	movl %ebx, 8(%edi)	)
 	adcl %edx, %eax
-DST(	movl %edx, %es:12(%edi)	)
+DST(	movl %edx, 12(%edi)	)
 
 SRC(	movl 16(%esi), %ebx 	)
 SRC(	movl 20(%esi), %edx	)
 	adcl %ebx, %eax
-DST(	movl %ebx, %es:16(%edi)	)
+DST(	movl %ebx, 16(%edi)	)
 	adcl %edx, %eax
-DST(	movl %edx, %es:20(%edi)	)
+DST(	movl %edx, 20(%edi)	)
 
 SRC(	movl 24(%esi), %ebx	)
 SRC(	movl 28(%esi), %edx	)
 	adcl %ebx, %eax
-DST(	movl %ebx, %es:24(%edi)	)
+DST(	movl %ebx, 24(%edi)	)
 	adcl %edx, %eax
-DST(	movl %edx, %es:28(%edi)	)
+DST(	movl %edx, 28(%edi)	)
 
 	lea 32(%esi), %esi
 	lea 32(%edi), %edi
@@ -364,7 +348,7 @@ DST(	movl %edx, %es:28(%edi)	)
 	shrl $2, %edx			# This clears CF
 SRC(3:	movl (%esi), %ebx	)
 	adcl %ebx, %eax
-DST(	movl %ebx, %es:(%edi)	)
+DST(	movl %ebx, (%edi)	)
 	lea 4(%esi), %esi
 	lea 4(%edi), %edi
 	dec %edx
@@ -376,12 +360,12 @@ DST(	movl %ebx, %es:(%edi)	)
 	jb 5f
 SRC(	movw (%esi), %cx	)
 	leal 2(%esi), %esi
-DST(	movw %cx, %es:(%edi)	)
+DST(	movw %cx, (%edi)	)
 	leal 2(%edi), %edi
 	je 6f
 	shll $16,%ecx
 SRC(5:	movb (%esi), %cl	)
-DST(	movb %cl, %es:(%edi)	)
+DST(	movb %cl, (%edi)	)
 6:	addl %ecx, %eax
 	adcl $0, %eax
 7:
@@ -392,7 +376,7 @@ DST(	movb %cl, %es:(%edi)	)
 
 6001:
 	movl ARGBASE+20(%esp), %ebx	# src_err_ptr
-	movl $-EFAULT, %ss:(%ebx)
+	movl $-EFAULT, (%ebx)
 
 	# zero the complete destination - computing the rest
 	# is too much work 
@@ -405,58 +389,34 @@ DST(	movb %cl, %es:(%edi)	)
 
 6002:
 	movl ARGBASE+24(%esp), %ebx	# dst_err_ptr
-	movl $-EFAULT,%ss:(%ebx)
+	movl $-EFAULT,(%ebx)
 	jmp 5000b
 
 .previous
-
-#ifdef CONFIG_PAX_MEMORY_UDEREF
-	pushl %ss
-	popl %ds
-	pushl %ss
-	popl %es
-#endif
 
 	popl %ebx
 	popl %esi
 	popl %edi
 	popl %ecx			# equivalent to addl $4,%esp
 	ret	
-ENDPROC(csum_partial_copy_generic_to_user)
+ENDPROC(csum_partial_copy_generic)
 
 #else
 
 /* Version for PentiumII/PPro */
 
 #define ROUND1(x) \
-	nop; nop; nop;				\
 	SRC(movl x(%esi), %ebx	)	;	\
 	addl %ebx, %eax			;	\
-	DST(movl %ebx, %es:x(%edi))	;
+	DST(movl %ebx, x(%edi)	)	; 
 
 #define ROUND(x) \
-	nop; nop; nop;				\
 	SRC(movl x(%esi), %ebx	)	;	\
 	adcl %ebx, %eax			;	\
-	DST(movl %ebx, %es:x(%edi))	;
+	DST(movl %ebx, x(%edi)	)	;
 
 #define ARGBASE 12
-
-ENTRY(csum_partial_copy_generic_to_user)
-
-#ifdef CONFIG_PAX_MEMORY_UDEREF
-	pushl %gs
-	popl %es
-	jmp csum_partial_copy_generic
-#endif
-
-ENTRY(csum_partial_copy_generic_from_user)
-
-#ifdef CONFIG_PAX_MEMORY_UDEREF
-	pushl %gs
-	popl %ds
-#endif
-
+		
 ENTRY(csum_partial_copy_generic)
 	pushl %ebx
 	pushl %edi
@@ -475,7 +435,7 @@ ENTRY(csum_partial_copy_generic)
 	subl %ebx, %edi  
 	lea  -1(%esi),%edx
 	andl $-32,%edx
-	lea 3f(%ebx,%ebx,2), %ebx
+	lea 3f(%ebx,%ebx), %ebx
 	testl %esi, %esi 
 	jmp *%ebx
 1:	addl $64,%esi
@@ -496,19 +456,19 @@ ENTRY(csum_partial_copy_generic)
 	jb 5f
 SRC(	movw (%esi), %dx         )
 	leal 2(%esi), %esi
-DST(	movw %dx, %es:(%edi)     )
+DST(	movw %dx, (%edi)         )
 	leal 2(%edi), %edi
 	je 6f
 	shll $16,%edx
 5:
 SRC(	movb (%esi), %dl         )
-DST(	movb %dl, %es:(%edi)     )
+DST(	movb %dl, (%edi)         )
 6:	addl %edx, %eax
 	adcl $0, %eax
 7:
 .section .fixup, "ax"
 6001:	movl	ARGBASE+20(%esp), %ebx	# src_err_ptr	
-	movl $-EFAULT, %ss:(%ebx)
+	movl $-EFAULT, (%ebx)
 	# zero the complete destination (computing the rest is too much work)
 	movl ARGBASE+8(%esp),%edi	# dst
 	movl ARGBASE+12(%esp),%ecx	# len
@@ -516,22 +476,15 @@ DST(	movb %dl, %es:(%edi)     )
 	rep; stosb
 	jmp 7b
 6002:	movl ARGBASE+24(%esp), %ebx	# dst_err_ptr
-	movl $-EFAULT, %ss:(%ebx)
+	movl $-EFAULT, (%ebx)
 	jmp  7b			
 .previous				
-
-#ifdef CONFIG_PAX_MEMORY_UDEREF
-	pushl %ss
-	popl %ds
-	pushl %ss
-	popl %es
-#endif
 
 	popl %esi
 	popl %edi
 	popl %ebx
 	ret
-ENDPROC(csum_partial_copy_generic_to_user)
+ENDPROC(csum_partial_copy_generic)
 				
 #undef ROUND
 #undef ROUND1		

@@ -287,7 +287,7 @@ static void __rate_control_send_low(struct ieee80211_hw *hw,
 	u32 rate_flags =
 		ieee80211_chandef_rate_flags(&hw->conf.chandef);
 
-	if ((sband->band == IEEE80211_BAND_2GHZ) &&
+	if ((sband->band == NL80211_BAND_2GHZ) &&
 	    (info->flags & IEEE80211_TX_CTL_NO_CCK_RATE))
 		rate_flags |= IEEE80211_RATE_ERP_G;
 
@@ -901,7 +901,7 @@ int ieee80211_init_rate_ctrl_alg(struct ieee80211_local *local,
 
 	ASSERT_RTNL();
 
-	if (local_read(&local->open_count))
+	if (local->open_count)
 		return -EBUSY;
 
 	if (ieee80211_hw_check(&local->hw, HAS_RATE_CONTROL)) {

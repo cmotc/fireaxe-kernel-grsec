@@ -318,7 +318,7 @@ static struct net_device_stats *pcnet32_get_stats(struct net_device *);
 static void pcnet32_load_multicast(struct net_device *dev);
 static void pcnet32_set_multicast_list(struct net_device *);
 static int pcnet32_ioctl(struct net_device *, struct ifreq *, int);
-static void pcnet32_watchdog(unsigned long);
+static void pcnet32_watchdog(struct net_device *);
 static int mdio_read(struct net_device *dev, int phy_id, int reg_num);
 static void mdio_write(struct net_device *dev, int phy_id, int reg_num,
 		       int val);
@@ -448,7 +448,7 @@ static void pcnet32_netif_stop(struct net_device *dev)
 {
 	struct pcnet32_private *lp = netdev_priv(dev);
 
-	dev->trans_start = jiffies; /* prevent tx timeout */
+	netif_trans_update(dev); /* prevent tx timeout */
 	napi_disable(&lp->napi);
 	netif_tx_disable(dev);
 }
@@ -1915,7 +1915,7 @@ pcnet32_probe1(unsigned long ioaddr, int shared, struct pci_dev *pdev)
 
 	init_timer(&lp->watchdog_timer);
 	lp->watchdog_timer.data = (unsigned long)dev;
-	lp->watchdog_timer.function = &pcnet32_watchdog;
+	lp->watchdog_timer.function = (void *)&pcnet32_watchdog;
 
 	/* The PCNET32-specific entries in the device structure. */
 	dev->netdev_ops = &pcnet32_netdev_ops;
@@ -2426,7 +2426,7 @@ static void pcnet32_tx_timeout(struct net_device *dev)
 	}
 	pcnet32_restart(dev, CSR0_NORMAL);
 
-	dev->trans_start = jiffies; /* prevent tx timeout */
+	netif_trans_update(dev); /* prevent tx timeout */
 	netif_wake_queue(dev);
 
 	spin_unlock_irqrestore(&lp->lock, flags);
@@ -2837,9 +2837,8 @@ static void pcnet32_check_media(struct net_device *dev, int verbose)
  * Could possibly be changed to use mii_check_media instead.
  */
 
-static void pcnet32_watchdog(unsigned long _dev)
+static void pcnet32_watchdog(struct net_device *dev)
 {
-	struct net_device *dev = (struct net_device *)_dev;
 	struct pcnet32_private *lp = netdev_priv(dev);
 	unsigned long flags;
 

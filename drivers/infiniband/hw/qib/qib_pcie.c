@@ -144,13 +144,7 @@ int qib_pcie_ddinit(struct qib_devdata *dd, struct pci_dev *pdev,
 	addr = pci_resource_start(pdev, 0);
 	len = pci_resource_len(pdev, 0);
 
-#if defined(__powerpc__)
-	/* There isn't a generic way to specify writethrough mappings */
-	dd->kregbase = __ioremap(addr, len, _PAGE_NO_CACHE | _PAGE_WRITETHRU);
-#else
 	dd->kregbase = ioremap_nocache(addr, len);
-#endif
-
 	if (!dd->kregbase)
 		return -ENOMEM;
 
@@ -628,7 +622,7 @@ static void qib_tune_pcie_caps(struct qib_devdata *dd)
  * PCI error infrastructure, registered via pci
  */
 static pci_ers_result_t
-qib_pci_error_detected(struct pci_dev *pdev, enum pci_channel_state state)
+qib_pci_error_detected(struct pci_dev *pdev, pci_channel_state_t state)
 {
 	struct qib_devdata *dd = pci_get_drvdata(pdev);
 	pci_ers_result_t ret = PCI_ERS_RESULT_RECOVERED;

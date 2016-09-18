@@ -29,8 +29,10 @@
  * there is contention on the semaphore.
  *
  * %eax contains the semaphore pointer on entry. Save the C-clobbered
- * registers (%eax, %edx and %ecx) except %eax whish is either a return
- * value or just clobbered..
+ * registers (%eax, %edx and %ecx) except %eax which is either a return
+ * value or just gets clobbered. Same is true for %edx so make sure GCC
+ * reloads it after the slow path, by making it hold a temporary, for
+ * example see ____down_write().
  */
 
 #define save_common_regs \
@@ -93,7 +95,6 @@ ENTRY(call_rwsem_down_read_failed)
 	__ASM_SIZE(pop,) %__ASM_REG(dx)
 	restore_common_regs
 	FRAME_END
-	pax_force_retaddr
 	ret
 ENDPROC(call_rwsem_down_read_failed)
 
@@ -104,9 +105,18 @@ ENTRY(call_rwsem_down_write_failed)
 	call rwsem_down_write_failed
 	restore_common_regs
 	FRAME_END
-	pax_force_retaddr
 	ret
 ENDPROC(call_rwsem_down_write_failed)
+
+ENTRY(call_rwsem_down_write_failed_killable)
+	FRAME_BEGIN
+	save_common_regs
+	movq %rax,%rdi
+	call rwsem_down_write_failed_killable
+	restore_common_regs
+	FRAME_END
+	ret
+ENDPROC(call_rwsem_down_write_failed_killable)
 
 ENTRY(call_rwsem_wake)
 	FRAME_BEGIN
@@ -118,7 +128,6 @@ ENTRY(call_rwsem_wake)
 	call rwsem_wake
 	restore_common_regs
 1:	FRAME_END
-	pax_force_retaddr
 	ret
 ENDPROC(call_rwsem_wake)
 
@@ -131,6 +140,5 @@ ENTRY(call_rwsem_downgrade_wake)
 	__ASM_SIZE(pop,) %__ASM_REG(dx)
 	restore_common_regs
 	FRAME_END
-	pax_force_retaddr
 	ret
 ENDPROC(call_rwsem_downgrade_wake)

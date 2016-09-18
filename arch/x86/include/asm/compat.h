@@ -41,11 +41,7 @@ typedef s64 __attribute__((aligned(4))) compat_s64;
 typedef u32		compat_uint_t;
 typedef u32		compat_ulong_t;
 typedef u64 __attribute__((aligned(4))) compat_u64;
-#ifdef CHECKER_PLUGIN_USER
 typedef u32		compat_uptr_t;
-#else
-typedef u32		__user compat_uptr_t;
-#endif
 
 struct compat_timespec {
 	compat_time_t	tv_sec;
@@ -311,7 +307,7 @@ static inline void __user *arch_compat_alloc_user_space(long len)
 	return (void __user *)round_down(sp - len, 16);
 }
 
-static inline bool is_x32_task(void)
+static inline bool in_x32_syscall(void)
 {
 #ifdef CONFIG_X86_X32_ABI
 	if (task_pt_regs(current)->orig_ax & __X32_SYSCALL_BIT)
@@ -322,7 +318,7 @@ static inline bool is_x32_task(void)
 
 static inline bool in_compat_syscall(void)
 {
-	return is_ia32_task() || is_x32_task();
+	return in_ia32_syscall() || in_x32_syscall();
 }
 #define in_compat_syscall in_compat_syscall	/* override the generic impl */
 

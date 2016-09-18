@@ -17,9 +17,9 @@ struct rds_tcp_connection {
 	 */
 	struct mutex		t_conn_lock;
 	struct socket		*t_sock;
-	void			(*t_orig_write_space)(struct sock *sk);
-	void			(*t_orig_data_ready)(struct sock *sk);
-	void			(*t_orig_state_change)(struct sock *sk);
+	void			*t_orig_write_space;
+	void			*t_orig_data_ready;
+	void			*t_orig_state_change;
 
 	struct rds_tcp_incoming	*t_tinc;
 	size_t			t_tinc_hdr_rem;
@@ -50,6 +50,7 @@ struct rds_tcp_statistics {
 void rds_tcp_tune(struct socket *sock);
 void rds_tcp_nonagle(struct socket *sock);
 void rds_tcp_set_callbacks(struct socket *sock, struct rds_connection *conn);
+void rds_tcp_reset_callbacks(struct socket *sock, struct rds_connection *conn);
 void rds_tcp_restore_callbacks(struct socket *sock,
 			       struct rds_tcp_connection *tc);
 u32 rds_tcp_snd_nxt(struct rds_tcp_connection *tc);
@@ -82,7 +83,7 @@ int rds_tcp_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to);
 void rds_tcp_xmit_prepare(struct rds_connection *conn);
 void rds_tcp_xmit_complete(struct rds_connection *conn);
 int rds_tcp_xmit(struct rds_connection *conn, struct rds_message *rm,
-	         unsigned int hdr_off, unsigned int sg, unsigned int off);
+		 unsigned int hdr_off, unsigned int sg, unsigned int off);
 void rds_tcp_write_space(struct sock *sk);
 
 /* tcp_stats.c */

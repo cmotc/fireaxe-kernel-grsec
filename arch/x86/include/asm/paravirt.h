@@ -15,17 +15,6 @@
 #include <linux/cpumask.h>
 #include <asm/frame.h>
 
-static inline int paravirt_enabled(void)
-{
-	return pv_info.paravirt_enabled;
-}
-
-static inline int paravirt_has_feature(unsigned int feature)
-{
-	WARN_ON_ONCE(!pv_info.paravirt_enabled);
-	return (pv_info.features & feature);
-}
-
 static inline void load_sp0(struct tss_struct *tss,
 			     struct thread_struct *thread)
 {
@@ -130,21 +119,31 @@ static inline void wbinvd(void)
 
 #define get_kernel_rpl()  (pv_info.kernel_rpl)
 
-static inline u64 paravirt_read_msr(unsigned msr, int *err)
+static inline u64 paravirt_read_msr(unsigned msr)
 {
-	return PVOP_CALL2(u64, pv_cpu_ops.read_msr, msr, err);
+	return PVOP_CALL1(u64, pv_cpu_ops.read_msr, msr);
 }
 
-static inline int paravirt_write_msr(unsigned msr, unsigned low, unsigned high)
+static inline void paravirt_write_msr(unsigned msr,
+				      unsigned low, unsigned high)
 {
-	return PVOP_CALL3(int, pv_cpu_ops.write_msr, msr, low, high);
+	return PVOP_VCALL3(pv_cpu_ops.write_msr, msr, low, high);
 }
 
-/* These should all do BUG_ON(_err), but our headers are too tangled. */
+static inline u64 paravirt_read_msr_safe(unsigned msr, int *err)
+{
+	return PVOP_CALL2(u64, pv_cpu_ops.read_msr_safe, msr, err);
+}
+
+static inline int paravirt_write_msr_safe(unsigned msr,
+					  unsigned low, unsigned high)
+{
+	return PVOP_CALL3(int, pv_cpu_ops.write_msr_safe, msr, low, high);
+}
+
 #define rdmsr(msr, val1, val2)			\
 do {						\
-	int _err;				\
-	u64 _l = paravirt_read_msr(msr, &_err);	\
+	u64 _l = paravirt_read_msr(msr);	\
 	val1 = (u32)_l;				\
 	val2 = _l >> 32;			\
 } while (0)
@@ -156,8 +155,7 @@ do {						\
 
 #define rdmsrl(msr, val)			\
 do {						\
-	int _err;				\
-	val = paravirt_read_msr(msr, &_err);	\
+	val = paravirt_read_msr(msr);		\
 } while (0)
 
 static inline void wrmsrl(unsigned msr, u64 val)
@@ -165,23 +163,23 @@ static inline void wrmsrl(unsigned msr, u64 val)
 	wrmsr(msr, (u32)val, (u32)(val>>32));
 }
 
-#define wrmsr_safe(msr, a, b)	paravirt_write_msr(msr, a, b)
+#define wrmsr_safe(msr, a, b)	paravirt_write_msr_safe(msr, a, b)
 
 /* rdmsr with exception handling */
-#define rdmsr_safe(msr, a, b)			\
-({						\
-	int _err;				\
-	u64 _l = paravirt_read_msr(msr, &_err);	\
-	(*a) = (u32)_l;				\
-	(*b) = _l >> 32;			\
-	_err;					\
+#define rdmsr_safe(msr, a, b)				\
+({							\
+	int _err;					\
+	u64 _l = paravirt_read_msr_safe(msr, &_err);	\
+	(*a) = (u32)_l;					\
+	(*b) = _l >> 32;				\
+	_err;						\
 })
 
 static inline int rdmsrl_safe(unsigned msr, unsigned long long *p)
 {
 	int err;
 
-	*p = paravirt_read_msr(msr, &err);
+	*p = paravirt_read_msr_safe(msr, &err);
 	return err;
 }
 
@@ -511,7 +509,7 @@ static inline pmd_t __pmd(pmdval_t val)
 	return (pmd_t) { ret };
 }
 
-static inline __intentional_overflow(-1) pmdval_t pmd_val(pmd_t pmd)
+static inline pmdval_t pmd_val(pmd_t pmd)
 {
 	pmdval_t ret;
 
@@ -574,18 +572,6 @@ static inline void set_pgd(pgd_t *pgdp, pgd_t pgd)
 			    val, (u64)val >> 32);
 	else
 		PVOP_VCALL2(pv_mmu_ops.set_pgd, pgdp,
-			    val);
-}
-
-static inline void set_pgd_batched(pgd_t *pgdp, pgd_t pgd)
-{
-	pgdval_t val = native_pgd_val(pgd);
-
-	if (sizeof(pgdval_t) > sizeof(long))
-		PVOP_VCALL3(pv_mmu_ops.set_pgd_batched, pgdp,
-			    val, (u64)val >> 32);
-	else
-		PVOP_VCALL2(pv_mmu_ops.set_pgd_batched, pgdp,
 			    val);
 }
 
@@ -672,21 +658,6 @@ static inline void __set_fixmap(unsigned /* enum fixed_addresses */ idx,
 {
 	pv_mmu_ops.set_fixmap(idx, phys, flags);
 }
-
-#ifdef CONFIG_PAX_KERNEXEC
-static inline unsigned long pax_open_kernel(void)
-{
-	return PVOP_CALL0(unsigned long, pv_mmu_ops.pax_open_kernel);
-}
-
-static inline unsigned long pax_close_kernel(void)
-{
-	return PVOP_CALL0(unsigned long, pv_mmu_ops.pax_close_kernel);
-}
-#else
-static inline unsigned long pax_open_kernel(void) { return 0; }
-static inline unsigned long pax_close_kernel(void) { return 0; }
-#endif
 
 #if defined(CONFIG_SMP) && defined(CONFIG_PARAVIRT_SPINLOCKS)
 
@@ -915,7 +886,7 @@ extern void default_banner(void);
 
 #define PARA_PATCH(struct, off)        ((PARAVIRT_PATCH_##struct + (off)) / 4)
 #define PARA_SITE(ptype, clobbers, ops) _PVSITE(ptype, clobbers, ops, .long, 4)
-#define PARA_INDIRECT(addr)	*%ss:addr
+#define PARA_INDIRECT(addr)	*%cs:addr
 #endif
 
 #define INTERRUPT_RETURN						\
@@ -973,21 +944,6 @@ extern void default_banner(void);
 	PARA_SITE(PARA_PATCH(pv_cpu_ops, PV_CPU_usergs_sysret64),	\
 		  CLBR_NONE,						\
 		  jmp PARA_INDIRECT(pv_cpu_ops+PV_CPU_usergs_sysret64))
-
-#define GET_CR0_INTO_RDI				\
-	call PARA_INDIRECT(pv_cpu_ops+PV_CPU_read_cr0);	\
-	mov %rax,%rdi
-
-#define SET_RDI_INTO_CR0				\
-	call PARA_INDIRECT(pv_cpu_ops+PV_CPU_write_cr0)
-
-#define GET_CR3_INTO_RDI				\
-	call PARA_INDIRECT(pv_mmu_ops+PV_MMU_read_cr3);	\
-	mov %rax,%rdi
-
-#define SET_RDI_INTO_CR3				\
-	call PARA_INDIRECT(pv_mmu_ops+PV_MMU_write_cr3)
-
 #endif	/* CONFIG_X86_32 */
 
 #endif /* __ASSEMBLY__ */

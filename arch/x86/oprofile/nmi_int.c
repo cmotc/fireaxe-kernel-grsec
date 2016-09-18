@@ -23,7 +23,6 @@
 #include <asm/nmi.h>
 #include <asm/msr.h>
 #include <asm/apic.h>
-#include <asm/pgtable.h>
 
 #include "op_counter.h"
 #include "op_x86_model.h"
@@ -616,7 +615,7 @@ enum __force_cpu_type {
 
 static int force_cpu_type;
 
-static int set_cpu_type(const char *str, const struct kernel_param *kp)
+static int set_cpu_type(const char *str, struct kernel_param *kp)
 {
 	if (!strcmp(str, "timer")) {
 		force_cpu_type = timer;
@@ -637,7 +636,7 @@ static int __init ppro_init(char **cpu_type)
 	__u8 cpu_model = boot_cpu_data.x86_model;
 	struct op_x86_model_spec *spec = &op_ppro_spec;	/* default */
 
-	if (force_cpu_type == arch_perfmon && cpu_has_arch_perfmon)
+	if (force_cpu_type == arch_perfmon && boot_cpu_has(X86_FEATURE_ARCH_PERFMON))
 		return 0;
 
 	/*
@@ -701,7 +700,7 @@ int __init op_nmi_init(struct oprofile_operations *ops)
 	char *cpu_type = NULL;
 	int ret = 0;
 
-	if (!cpu_has_apic)
+	if (!boot_cpu_has(X86_FEATURE_APIC))
 		return -ENODEV;
 
 	if (force_cpu_type == timer)
@@ -762,7 +761,7 @@ int __init op_nmi_init(struct oprofile_operations *ops)
 		if (cpu_type)
 			break;
 
-		if (!cpu_has_arch_perfmon)
+		if (!boot_cpu_has(X86_FEATURE_ARCH_PERFMON))
 			return -ENODEV;
 
 		/* use arch perfmon as fallback */
@@ -787,11 +786,8 @@ int __init op_nmi_init(struct oprofile_operations *ops)
 	if (ret)
 		return ret;
 
-	if (!model->num_virt_counters) {
-		pax_open_kernel();
-		const_cast(model->num_virt_counters) = model->num_counters;
-		pax_close_kernel();
-	}
+	if (!model->num_virt_counters)
+		model->num_virt_counters = model->num_counters;
 
 	mux_init(ops);
 

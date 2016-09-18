@@ -42,12 +42,12 @@ static struct genl_family quota_genl_family = {
 void quota_send_warning(struct kqid qid, dev_t dev,
 			const char warntype)
 {
-	static atomic_unchecked_t seq;
+	static atomic_t seq;
 	struct sk_buff *skb;
 	void *msg_head;
 	int ret;
 	int msg_size = 4 * nla_total_size(sizeof(u32)) +
-		       2 * nla_total_size(sizeof(u64));
+		       2 * nla_total_size_64bit(sizeof(u64));
 
 	/* We have to allocate using GFP_NOFS as we are called from a
 	 * filesystem performing write and thus further recursion into
@@ -58,7 +58,7 @@ void quota_send_warning(struct kqid qid, dev_t dev,
 		  "VFS: Not enough memory to send quota warning.\n");
 		return;
 	}
-	msg_head = genlmsg_put(skb, 0, atomic_add_return_unchecked(1, &seq),
+	msg_head = genlmsg_put(skb, 0, atomic_add_return(1, &seq),
 			&quota_genl_family, 0, QUOTA_NL_C_WARNING);
 	if (!msg_head) {
 		printk(KERN_ERR
@@ -68,8 +68,9 @@ void quota_send_warning(struct kqid qid, dev_t dev,
 	ret = nla_put_u32(skb, QUOTA_NL_A_QTYPE, qid.type);
 	if (ret)
 		goto attr_err_out;
-	ret = nla_put_u64(skb, QUOTA_NL_A_EXCESS_ID,
-			  from_kqid_munged(&init_user_ns, qid));
+	ret = nla_put_u64_64bit(skb, QUOTA_NL_A_EXCESS_ID,
+				from_kqid_munged(&init_user_ns, qid),
+				QUOTA_NL_A_PAD);
 	if (ret)
 		goto attr_err_out;
 	ret = nla_put_u32(skb, QUOTA_NL_A_WARNING, warntype);
@@ -81,8 +82,9 @@ void quota_send_warning(struct kqid qid, dev_t dev,
 	ret = nla_put_u32(skb, QUOTA_NL_A_DEV_MINOR, MINOR(dev));
 	if (ret)
 		goto attr_err_out;
-	ret = nla_put_u64(skb, QUOTA_NL_A_CAUSED_ID,
-			  from_kuid_munged(&init_user_ns, current_uid()));
+	ret = nla_put_u64_64bit(skb, QUOTA_NL_A_CAUSED_ID,
+				from_kuid_munged(&init_user_ns, current_uid()),
+				QUOTA_NL_A_PAD);
 	if (ret)
 		goto attr_err_out;
 	genlmsg_end(skb, msg_head);

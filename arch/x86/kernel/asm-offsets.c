@@ -32,8 +32,6 @@ void common(void) {
 	OFFSET(TI_flags, thread_info, flags);
 	OFFSET(TI_status, thread_info, status);
 	OFFSET(TI_addr_limit, thread_info, addr_limit);
-	OFFSET(TI_lowest_stack, thread_info, lowest_stack);
-	DEFINE(TI_task_thread_sp0, offsetof(struct task_struct, thread.sp0) - offsetof(struct task_struct, tinfo));
 
 	BLANK();
 	OFFSET(crypto_tfm_ctx_offset, crypto_tfm, __crt_ctx);
@@ -61,7 +59,6 @@ void common(void) {
 
 #ifdef CONFIG_PARAVIRT
 	BLANK();
-	OFFSET(PARAVIRT_enabled, pv_info, paravirt_enabled);
 	OFFSET(PARAVIRT_PATCH_pv_cpu_ops, paravirt_patch_template, pv_cpu_ops);
 	OFFSET(PARAVIRT_PATCH_pv_irq_ops, paravirt_patch_template, pv_irq_ops);
 	OFFSET(PV_IRQ_irq_disable, pv_irq_ops, irq_disable);
@@ -69,25 +66,7 @@ void common(void) {
 	OFFSET(PV_CPU_iret, pv_cpu_ops, iret);
 	OFFSET(PV_CPU_read_cr0, pv_cpu_ops, read_cr0);
 	OFFSET(PV_MMU_read_cr2, pv_mmu_ops, read_cr2);
-
-#ifdef CONFIG_PAX_KERNEXEC
-	OFFSET(PV_CPU_write_cr0, pv_cpu_ops, write_cr0);
 #endif
-
-#ifdef CONFIG_PAX_MEMORY_UDEREF
-	OFFSET(PV_MMU_read_cr3, pv_mmu_ops, read_cr3);
-	OFFSET(PV_MMU_write_cr3, pv_mmu_ops, write_cr3);
-#ifdef CONFIG_X86_64
-	OFFSET(PV_MMU_set_pgd_batched, pv_mmu_ops, set_pgd_batched);
-#endif
-#endif
-
-#endif
-
-	BLANK();
-	DEFINE(PAGE_SIZE_asm, PAGE_SIZE);
-	DEFINE(PAGE_SHIFT_asm, PAGE_SHIFT);
-	DEFINE(THREAD_SIZE_asm, THREAD_SIZE);
 
 #ifdef CONFIG_XEN
 	BLANK();
@@ -101,10 +80,10 @@ void common(void) {
 	OFFSET(BP_hardware_subarch, boot_params, hdr.hardware_subarch);
 	OFFSET(BP_version, boot_params, hdr.version);
 	OFFSET(BP_kernel_alignment, boot_params, hdr.kernel_alignment);
+	OFFSET(BP_init_size, boot_params, hdr.init_size);
 	OFFSET(BP_pref_address, boot_params, hdr.pref_address);
 	OFFSET(BP_code32_start, boot_params, hdr.code32_start);
 
 	BLANK();
 	DEFINE(PTREGS_SIZE, sizeof(struct pt_regs));
-	DEFINE(TSS_size, sizeof(struct tss_struct));
 }

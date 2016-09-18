@@ -773,7 +773,7 @@ static int ast_get_modes(struct drm_connector *connector)
 	return 0;
 }
 
-static enum drm_mode_status ast_mode_valid(struct drm_connector *connector,
+static int ast_mode_valid(struct drm_connector *connector,
 			  struct drm_display_mode *mode)
 {
 	struct ast_private *ast = connector->dev->dev_private;
@@ -1141,7 +1141,7 @@ static int ast_cursor_set(struct drm_crtc *crtc,
 	if (width > AST_MAX_HWC_WIDTH || height > AST_MAX_HWC_HEIGHT)
 		return -EINVAL;
 
-	obj = drm_gem_object_lookup(crtc->dev, file_priv, handle);
+	obj = drm_gem_object_lookup(file_priv, handle);
 	if (!obj) {
 		DRM_ERROR("Cannot find cursor object %x for crtc\n", handle);
 		return -ENOENT;

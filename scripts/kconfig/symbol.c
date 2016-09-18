@@ -209,12 +209,26 @@ static void sym_set_all_changed(void)
 static void sym_calc_visibility(struct symbol *sym)
 {
 	struct property *prop;
+	struct symbol *choice_sym = NULL;
 	tristate tri;
 
 	/* any prompt visible? */
 	tri = no;
+
+	if (sym_is_choice_value(sym))
+		choice_sym = prop_get_symbol(sym_get_choice_prop(sym));
+
 	for_all_prompts(sym, prop) {
 		prop->visible.tri = expr_calc_value(prop->visible.expr);
+		/*
+		 * Tristate choice_values with visibility 'mod' are
+		 * not visible if the corresponding choice's value is
+		 * 'yes'.
+		 */
+		if (choice_sym && sym->type == S_TRISTATE &&
+		    prop->visible.tri == mod && choice_sym->curr.tri == yes)
+			prop->visible.tri = no;
+
 		tri = EXPR_OR(tri, prop->visible.tri);
 	}
 	if (tri == mod && (sym->type != S_TRISTATE || modules_val == no))
@@ -956,7 +970,7 @@ const char *sym_escape_string_value(const char *in)
 
 struct sym_match {
 	struct symbol	*sym;
-	regoff_t	so, eo;
+	off_t		so, eo;
 };
 
 /* Compare matched symbols as thus:
@@ -978,8 +992,8 @@ static int sym_rel_comp(const void *sym1, const void *sym2)
 	 * exactly; if this is the case, we can't decide which comes first,
 	 * and we fallback to sorting alphabetically.
 	 */
-	exact1 = (s1->eo - s1->so) == (long)strlen(s1->sym->name);
-	exact2 = (s2->eo - s2->so) == (long)strlen(s2->sym->name);
+	exact1 = (s1->eo - s1->so) == strlen(s1->sym->name);
+	exact2 = (s2->eo - s2->so) == strlen(s2->sym->name);
 	if (exact1 && !exact2)
 		return -1;
 	if (!exact1 && exact2)

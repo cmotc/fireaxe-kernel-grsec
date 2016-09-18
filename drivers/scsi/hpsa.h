@@ -63,6 +63,7 @@ struct hpsa_scsi_dev_t {
 	unsigned char scsi3addr[8];	/* as presented to the HW */
 	u8 physical_device : 1;
 	u8 expose_device;
+	u8 removed : 1;			/* device is marked for death */
 #define RAID_CTLR_LUNID "\0\0\0\0\0\0\0\0"
 	unsigned char device_id[16];    /* from inquiry pg. 0x83 */
 	u64 sas_address;
@@ -178,7 +179,7 @@ struct ctlr_info {
 	unsigned int msix_vector;
 	unsigned int msi_vector;
 	int intr_mode; /* either PERF_MODE_INT or SIMPLE_MODE_INT */
-	struct access_method *access;
+	struct access_method access;
 
 	/* queue and queue Info */
 	unsigned int Qdepth;
@@ -578,38 +579,38 @@ static unsigned long SA5_ioaccel_mode1_completed(struct ctlr_info *h, u8 q)
 }
 
 static struct access_method SA5_access = {
-	.submit_command = SA5_submit_command,
-	.set_intr_mask = SA5_intr_mask,
-	.intr_pending = SA5_intr_pending,
-	.command_completed = SA5_completed,
+	SA5_submit_command,
+	SA5_intr_mask,
+	SA5_intr_pending,
+	SA5_completed,
 };
 
 static struct access_method SA5_ioaccel_mode1_access = {
-	.submit_command = SA5_submit_command,
-	.set_intr_mask = SA5_performant_intr_mask,
-	.intr_pending = SA5_ioaccel_mode1_intr_pending,
-	.command_completed = SA5_ioaccel_mode1_completed,
+	SA5_submit_command,
+	SA5_performant_intr_mask,
+	SA5_ioaccel_mode1_intr_pending,
+	SA5_ioaccel_mode1_completed,
 };
 
 static struct access_method SA5_ioaccel_mode2_access = {
-	.submit_command = SA5_submit_command_ioaccel2,
-	.set_intr_mask = SA5_performant_intr_mask,
-	.intr_pending = SA5_performant_intr_pending,
-	.command_completed = SA5_performant_completed,
+	SA5_submit_command_ioaccel2,
+	SA5_performant_intr_mask,
+	SA5_performant_intr_pending,
+	SA5_performant_completed,
 };
 
 static struct access_method SA5_performant_access = {
-	.submit_command = SA5_submit_command,
-	.set_intr_mask = SA5_performant_intr_mask,
-	.intr_pending = SA5_performant_intr_pending,
-	.command_completed = SA5_performant_completed,
+	SA5_submit_command,
+	SA5_performant_intr_mask,
+	SA5_performant_intr_pending,
+	SA5_performant_completed,
 };
 
 static struct access_method SA5_performant_access_no_read = {
-	.submit_command = SA5_submit_command_no_read,
-	.set_intr_mask = SA5_performant_intr_mask,
-	.intr_pending = SA5_performant_intr_pending,
-	.command_completed = SA5_performant_completed,
+	SA5_submit_command_no_read,
+	SA5_performant_intr_mask,
+	SA5_performant_intr_pending,
+	SA5_performant_completed,
 };
 
 struct board_type {

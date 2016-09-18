@@ -325,7 +325,7 @@ static int raw_rcv_skb(struct sock *sk, struct sk_buff *skb)
 int raw_rcv(struct sock *sk, struct sk_buff *skb)
 {
 	if (!xfrm4_policy_check(sk, XFRM_POLICY_IN, skb)) {
-		atomic_inc_unchecked(&sk->sk_drops);
+		atomic_inc(&sk->sk_drops);
 		kfree_skb(skb);
 		return NET_RX_DROP;
 	}
@@ -339,8 +339,8 @@ int raw_rcv(struct sock *sk, struct sk_buff *skb)
 
 static int raw_send_hdrinc(struct sock *sk, struct flowi4 *fl4,
 			   struct msghdr *msg, size_t length,
-			   struct rtable **rtp,
-			   unsigned int flags)
+			   struct rtable **rtp, unsigned int flags,
+			   const struct sockcm_cookie *sockc)
 {
 	struct inet_sock *inet = inet_sk(sk);
 	struct net *net = sock_net(sk);
@@ -379,7 +379,7 @@ static int raw_send_hdrinc(struct sock *sk, struct flowi4 *fl4,
 
 	skb->ip_summed = CHECKSUM_NONE;
 
-	sock_tx_timestamp(sk, &skb_shinfo(skb)->tx_flags);
+	sock_tx_timestamp(sk, sockc->tsflags, &skb_shinfo(skb)->tx_flags);
 
 	skb->transport_header = skb->network_header;
 	err = -EFAULT;
@@ -540,6 +540,7 @@ static int raw_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 		daddr = inet->inet_daddr;
 	}
 
+	ipc.sockc.tsflags = sk->sk_tsflags;
 	ipc.addr = inet->inet_saddr;
 	ipc.opt = NULL;
 	ipc.tx_flags = 0;
@@ -548,7 +549,7 @@ static int raw_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 	ipc.oif = sk->sk_bound_dev_if;
 
 	if (msg->msg_controllen) {
-		err = ip_cmsg_send(net, msg, &ipc, false);
+		err = ip_cmsg_send(sk, msg, &ipc, false);
 		if (unlikely(err)) {
 			kfree(ipc.opt);
 			goto out;
@@ -638,10 +639,10 @@ back_from_confirm:
 
 	if (inet->hdrincl)
 		err = raw_send_hdrinc(sk, &fl4, msg, len,
-				      &rt, msg->msg_flags);
+				      &rt, msg->msg_flags, &ipc.sockc);
 
 	 else {
-		sock_tx_timestamp(sk, &ipc.tx_flags);
+		sock_tx_timestamp(sk, ipc.sockc.tsflags, &ipc.tx_flags);
 
 		if (!ipc.addr)
 			ipc.addr = fl4.daddr;
@@ -785,20 +786,16 @@ static int raw_init(struct sock *sk)
 
 static int raw_seticmpfilter(struct sock *sk, char __user *optval, int optlen)
 {
-	struct icmp_filter filter;
-
 	if (optlen > sizeof(struct icmp_filter))
 		optlen = sizeof(struct icmp_filter);
-	if (copy_from_user(&filter, optval, optlen))
+	if (copy_from_user(&raw_sk(sk)->filter, optval, optlen))
 		return -EFAULT;
-	raw_sk(sk)->filter = filter;
 	return 0;
 }
 
 static int raw_geticmpfilter(struct sock *sk, char __user *optval, int __user *optlen)
 {
 	int len, ret = -EFAULT;
-	struct icmp_filter filter;
 
 	if (get_user(len, optlen))
 		goto out;
@@ -808,8 +805,8 @@ static int raw_geticmpfilter(struct sock *sk, char __user *optval, int __user *o
 	if (len > sizeof(struct icmp_filter))
 		len = sizeof(struct icmp_filter);
 	ret = -EFAULT;
-	filter = raw_sk(sk)->filter;
-	if (put_user(len, optlen) || len > sizeof filter || copy_to_user(optval, &filter, len))
+	if (put_user(len, optlen) ||
+	    copy_to_user(optval, &raw_sk(sk)->filter, len))
 		goto out;
 	ret = 0;
 out:	return ret;
@@ -1038,7 +1035,7 @@ static void raw_sock_seq_show(struct seq_file *seq, struct sock *sp, int i)
 		0, 0L, 0,
 		from_kuid_munged(seq_user_ns(seq), sock_i_uid(sp)),
 		0, sock_i_ino(sp),
-		atomic_read(&sp->sk_refcnt), sp, atomic_read_unchecked(&sp->sk_drops));
+		atomic_read(&sp->sk_refcnt), sp, atomic_read(&sp->sk_drops));
 }
 
 static int raw_seq_show(struct seq_file *seq, void *v)
@@ -1101,7 +1098,7 @@ static __net_exit void raw_exit_net(struct net *net)
 	remove_proc_entry("raw", net->proc_net);
 }
 
-static __net_initconst struct pernet_operations raw_net_ops = {
+static __net_initdata struct pernet_operations raw_net_ops = {
 	.init = raw_init_net,
 	.exit = raw_exit_net,
 };

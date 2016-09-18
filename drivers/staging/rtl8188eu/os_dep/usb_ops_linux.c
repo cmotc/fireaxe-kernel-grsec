@@ -11,10 +11,6 @@
  * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
  ******************************************************************************/
 #define _USB_OPS_LINUX_C_
 
@@ -814,7 +810,7 @@ void usb_write_port_cancel(struct adapter *padapter)
 	}
 }
 
-void rtl8188eu_recv_tasklet(unsigned long priv)
+void rtl8188eu_recv_tasklet(void *priv)
 {
 	struct sk_buff *pskb;
 	struct adapter *adapt = priv;
@@ -833,7 +829,7 @@ void rtl8188eu_recv_tasklet(unsigned long priv)
 	}
 }
 
-void rtl8188eu_xmit_tasklet(unsigned long priv)
+void rtl8188eu_xmit_tasklet(void *priv)
 {
 	int ret = false;
 	struct adapter *adapt = priv;

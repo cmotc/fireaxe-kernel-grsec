@@ -201,6 +201,7 @@ serial_exists:
  * @cred: The credentials specifying UID namespace.
  * @perm: The permissions mask of the new key.
  * @flags: Flags specifying quota properties.
+ * @restrict_link: Optional link restriction method for new keyrings.
  *
  * Allocate a key of the specified type with the attributes given.  The key is
  * returned in an uninstantiated state and the caller needs to instantiate the
@@ -223,7 +224,10 @@ serial_exists:
  */
 struct key *key_alloc(struct key_type *type, const char *desc,
 		      kuid_t uid, kgid_t gid, const struct cred *cred,
-		      key_perm_t perm, unsigned long flags)
+		      key_perm_t perm, unsigned long flags,
+		      int (*restrict_link)(struct key *,
+					   const struct key_type *,
+					   const union key_payload *))
 {
 	struct key_user *user = NULL;
 	struct key *key;
@@ -283,7 +287,7 @@ struct key *key_alloc(struct key_type *type, const char *desc,
 
 	atomic_set(&key->usage, 1);
 	init_rwsem(&key->sem);
-	lockdep_set_class(&key->sem, (struct lock_class_key *)&type->lock_class);
+	lockdep_set_class(&key->sem, &type->lock_class);
 	key->index_key.type = type;
 	key->user = user;
 	key->quotalen = quotalen;
@@ -291,11 +295,10 @@ struct key *key_alloc(struct key_type *type, const char *desc,
 	key->uid = uid;
 	key->gid = gid;
 	key->perm = perm;
+	key->restrict_link = restrict_link;
 
 	if (!(flags & KEY_ALLOC_NOT_IN_QUOTA))
 		key->flags |= 1 << KEY_FLAG_IN_QUOTA;
-	if (flags & KEY_ALLOC_TRUSTED)
-		key->flags |= 1 << KEY_FLAG_TRUSTED;
 	if (flags & KEY_ALLOC_BUILT_IN)
 		key->flags |= 1 << KEY_FLAG_BUILTIN;
 
@@ -496,6 +499,12 @@ int key_instantiate_and_link(struct key *key,
 	}
 
 	if (keyring) {
+		if (keyring->restrict_link) {
+			ret = keyring->restrict_link(keyring, key->type,
+						     &prep.payload);
+			if (ret < 0)
+				goto error;
+		}
 		ret = __key_link_begin(keyring, &key->index_key, &edit);
 		if (ret < 0)
 			goto error;
@@ -551,8 +560,12 @@ int key_reject_and_link(struct key *key,
 	awaken = 0;
 	ret = -EBUSY;
 
-	if (keyring)
+	if (keyring) {
+		if (keyring->restrict_link)
+			return -EPERM;
+
 		link_ret = __key_link_begin(keyring, &key->index_key, &edit);
+	}
 
 	mutex_lock(&key_construction_mutex);
 
@@ -793,6 +806,9 @@ key_ref_t key_create_or_update(key_ref_t keyring_ref,
 	struct key *keyring, *key = NULL;
 	key_ref_t key_ref;
 	int ret;
+	int (*restrict_link)(struct key *,
+			     const struct key_type *,
+			     const union key_payload *) = NULL;
 
 	/* look up the key type to see if it's one of the registered kernel
 	 * types */
@@ -811,6 +827,10 @@ key_ref_t key_create_or_update(key_ref_t keyring_ref,
 
 	key_check(keyring);
 
+	key_ref = ERR_PTR(-EPERM);
+	if (!(flags & KEY_ALLOC_BYPASS_RESTRICTION))
+		restrict_link = keyring->restrict_link;
+
 	key_ref = ERR_PTR(-ENOTDIR);
 	if (keyring->type != &key_type_keyring)
 		goto error_put_type;
@@ -819,7 +839,6 @@ key_ref_t key_create_or_update(key_ref_t keyring_ref,
 	prep.data = payload;
 	prep.datalen = plen;
 	prep.quotalen = index_key.type->def_datalen;
-	prep.trusted = flags & KEY_ALLOC_TRUSTED;
 	prep.expiry = TIME_T_MAX;
 	if (index_key.type->preparse) {
 		ret = index_key.type->preparse(&prep);
@@ -835,10 +854,13 @@ key_ref_t key_create_or_update(key_ref_t keyring_ref,
 	}
 	index_key.desc_len = strlen(index_key.description);
 
-	key_ref = ERR_PTR(-EPERM);
-	if (!prep.trusted && test_bit(KEY_FLAG_TRUSTED_ONLY, &keyring->flags))
-		goto error_free_prep;
-	flags |= prep.trusted ? KEY_ALLOC_TRUSTED : 0;
+	if (restrict_link) {
+		ret = restrict_link(keyring, index_key.type, &prep.payload);
+		if (ret < 0) {
+			key_ref = ERR_PTR(ret);
+			goto error_free_prep;
+		}
+	}
 
 	ret = __key_link_begin(keyring, &index_key, &edit);
 	if (ret < 0) {
@@ -879,7 +901,7 @@ key_ref_t key_create_or_update(key_ref_t keyring_ref,
 
 	/* allocate a new key */
 	key = key_alloc(index_key.type, index_key.description,
-			cred->fsuid, cred->fsgid, cred, perm, flags);
+			cred->fsuid, cred->fsgid, cred, perm, flags, NULL);
 	if (IS_ERR(key)) {
 		key_ref = ERR_CAST(key);
 		goto error_link_end;
@@ -1079,9 +1101,7 @@ int register_key_type(struct key_type *ktype)
 	struct key_type *p;
 	int ret;
 
-	pax_open_kernel();
-	memset((void *)&ktype->lock_class, 0, sizeof(ktype->lock_class));
-	pax_close_kernel();
+	memset(&ktype->lock_class, 0, sizeof(ktype->lock_class));
 
 	ret = -EEXIST;
 	down_write(&key_types_sem);
@@ -1093,7 +1113,7 @@ int register_key_type(struct key_type *ktype)
 	}
 
 	/* store the type */
-	pax_list_add((struct list_head *)&ktype->link, &key_types_list);
+	list_add(&ktype->link, &key_types_list);
 
 	pr_notice("Key type %s registered\n", ktype->name);
 	ret = 0;
@@ -1115,7 +1135,7 @@ EXPORT_SYMBOL(register_key_type);
 void unregister_key_type(struct key_type *ktype)
 {
 	down_write(&key_types_sem);
-	pax_list_del_init((struct list_head *)&ktype->link);
+	list_del_init(&ktype->link);
 	downgrade_write(&key_types_sem);
 	key_gc_keytype(ktype);
 	pr_notice("Key type %s unregistered\n", ktype->name);
@@ -1133,10 +1153,10 @@ void __init key_init(void)
 			0, SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
 
 	/* add the special key types */
-	pax_list_add_tail((struct list_head *)&key_type_keyring.link, &key_types_list);
-	pax_list_add_tail((struct list_head *)&key_type_dead.link, &key_types_list);
-	pax_list_add_tail((struct list_head *)&key_type_user.link, &key_types_list);
-	pax_list_add_tail((struct list_head *)&key_type_logon.link, &key_types_list);
+	list_add_tail(&key_type_keyring.link, &key_types_list);
+	list_add_tail(&key_type_dead.link, &key_types_list);
+	list_add_tail(&key_type_user.link, &key_types_list);
+	list_add_tail(&key_type_logon.link, &key_types_list);
 
 	/* record the root user tracking */
 	rb_link_node(&root_key_user.node,

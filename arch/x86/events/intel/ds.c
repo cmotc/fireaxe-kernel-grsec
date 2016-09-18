@@ -601,7 +601,7 @@ unlock:
 
 static inline void intel_pmu_drain_pebs_buffer(void)
 {
-	struct pt_regs regs = {};
+	struct pt_regs regs;
 
 	x86_pmu.drain_pebs(&regs);
 }
@@ -640,6 +640,12 @@ struct event_constraint intel_atom_pebs_event_constraints[] = {
 struct event_constraint intel_slm_pebs_event_constraints[] = {
 	/* INST_RETIRED.ANY_P, inv=1, cmask=16 (cycles:p). */
 	INTEL_FLAGS_EVENT_CONSTRAINT(0x108000c0, 0x1),
+	/* Allow all events as PEBS with no flags */
+	INTEL_ALL_EVENT_CONSTRAINT(0, 0x1),
+	EVENT_CONSTRAINT_END
+};
+
+struct event_constraint intel_glm_pebs_event_constraints[] = {
 	/* Allow all events as PEBS with no flags */
 	INTEL_ALL_EVENT_CONSTRAINT(0, 0x1),
 	EVENT_CONSTRAINT_END
@@ -903,7 +909,7 @@ static int intel_pmu_pebs_fixup_ip(struct pt_regs *regs)
 	struct cpu_hw_events *cpuc = this_cpu_ptr(&cpu_hw_events);
 	unsigned long from = cpuc->lbr_entries[0].from;
 	unsigned long old_to, to = cpuc->lbr_entries[0].to;
-	unsigned long ip = ktva_ktla(regs->ip);
+	unsigned long ip = regs->ip;
 	int is_64bit = 0;
 	void *kaddr;
 	int size;
@@ -955,7 +961,6 @@ static int intel_pmu_pebs_fixup_ip(struct pt_regs *regs)
 	} else {
 		kaddr = (void *)to;
 	}
-	kaddr = (void *)ktva_ktla((unsigned long)kaddr);
 
 	do {
 		struct insn insn;
@@ -1104,7 +1109,7 @@ static void setup_pebs_sample_data(struct perf_event *event,
 	}
 
 	if (event->attr.precise_ip > 1 && x86_pmu.intel_cap.pebs_format >= 2) {
-		set_linear_ip(regs, pebs->real_ip);
+		regs->ip = pebs->real_ip;
 		regs->flags |= PERF_EFLAGS_EXACT;
 	} else if (event->attr.precise_ip > 1 && intel_pmu_pebs_fixup_ip(regs))
 		regs->flags |= PERF_EFLAGS_EXACT;

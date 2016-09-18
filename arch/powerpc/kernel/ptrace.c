@@ -377,7 +377,7 @@ static int fpr_get(struct task_struct *target, const struct user_regset *regset,
 
 #else
 	BUILD_BUG_ON(offsetof(struct thread_fp_state, fpscr) !=
-		     offsetof(struct thread_fp_state, fpr[32][0]));
+		     offsetof(struct thread_fp_state, fpr[32]));
 
 	return user_regset_copyout(&pos, &count, &kbuf, &ubuf,
 				   &target->thread.fp_state, 0, -1);
@@ -405,7 +405,7 @@ static int fpr_set(struct task_struct *target, const struct user_regset *regset,
 	return 0;
 #else
 	BUILD_BUG_ON(offsetof(struct thread_fp_state, fpscr) !=
-		     offsetof(struct thread_fp_state, fpr[32][0]));
+		     offsetof(struct thread_fp_state, fpr[32]));
 
 	return user_regset_copyin(&pos, &count, &kbuf, &ubuf,
 				  &target->thread.fp_state, 0, -1);
@@ -1801,10 +1801,6 @@ static int do_seccomp(struct pt_regs *regs)
 static inline int do_seccomp(struct pt_regs *regs) { return 0; }
 #endif /* CONFIG_SECCOMP */
 
-#ifdef CONFIG_GRKERNSEC_SETXID
-extern void gr_delayed_cred_worker(void);
-#endif
-
 /**
  * do_syscall_trace_enter() - Do syscall tracing on kernel entry.
  * @regs: the pt_regs of the task to trace (current)
@@ -1832,11 +1828,6 @@ long do_syscall_trace_enter(struct pt_regs *regs)
 
 	if (do_seccomp(regs))
 		return -1;
-
-#ifdef CONFIG_GRKERNSEC_SETXID
-	if (unlikely(test_and_clear_thread_flag(TIF_GRSEC_SETXID)))
-		gr_delayed_cred_worker();
-#endif
 
 	if (test_thread_flag(TIF_SYSCALL_TRACE)) {
 		/*
@@ -1879,11 +1870,6 @@ long do_syscall_trace_enter(struct pt_regs *regs)
 void do_syscall_trace_leave(struct pt_regs *regs)
 {
 	int step;
-
-#ifdef CONFIG_GRKERNSEC_SETXID
-	if (unlikely(test_and_clear_thread_flag(TIF_GRSEC_SETXID)))
-		gr_delayed_cred_worker();
-#endif
 
 	audit_syscall_exit(regs);
 

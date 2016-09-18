@@ -178,7 +178,7 @@ static ide_startstop_t __ide_do_rw_disk(ide_drive_t *drive, struct request *rq,
  * 1073741822 == 549756 MB or 48bit addressing fake drive
  */
 
-static ide_startstop_t __intentional_overflow(-1) ide_do_rw_disk(ide_drive_t *drive, struct request *rq,
+static ide_startstop_t ide_do_rw_disk(ide_drive_t *drive, struct request *rq,
 				      sector_t block)
 {
 	ide_hwif_t *hwif = drive->hwif;
@@ -522,7 +522,7 @@ static int ide_do_setfeature(ide_drive_t *drive, u8 feature, u8 nsect)
 static void update_flush(ide_drive_t *drive)
 {
 	u16 *id = drive->id;
-	unsigned flush = 0;
+	bool wc = false;
 
 	if (drive->dev_flags & IDE_DFLAG_WCACHE) {
 		unsigned long long capacity;
@@ -546,12 +546,12 @@ static void update_flush(ide_drive_t *drive)
 		       drive->name, barrier ? "" : "not ");
 
 		if (barrier) {
-			flush = REQ_FLUSH;
+			wc = true;
 			blk_queue_prep_rq(drive->queue, idedisk_prep_fn);
 		}
 	}
 
-	blk_queue_flush(drive->queue, flush);
+	blk_queue_write_cache(drive->queue, wc, false);
 }
 
 ide_devset_get_flag(wcache, IDE_DFLAG_WCACHE);

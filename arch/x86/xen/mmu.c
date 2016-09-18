@@ -1113,7 +1113,7 @@ static void __init xen_cleanhighmap(unsigned long vaddr,
 
 	/* NOTE: The loop is more greedy than the cleanup_highmap variant.
 	 * We include the PMD passed in on _both_ boundaries. */
-	for (; vaddr <= vaddr_end && (pmd < (level2_kernel_pgt + PAGE_SIZE));
+	for (; vaddr <= vaddr_end && (pmd < (level2_kernel_pgt + PTRS_PER_PMD));
 			pmd++, vaddr += PMD_SIZE) {
 		if (pmd_none(*pmd))
 			continue;
@@ -1551,41 +1551,6 @@ static void xen_pgd_free(struct mm_struct *mm, pgd_t *pgd)
 #endif
 }
 
-#ifdef CONFIG_X86_32
-static pte_t __init mask_rw_pte(pte_t *ptep, pte_t pte)
-{
-	/* If there's an existing pte, then don't allow _PAGE_RW to be set */
-	if (pte_val_ma(*ptep) & _PAGE_PRESENT)
-		pte = __pte_ma(((pte_val_ma(*ptep) & _PAGE_RW) | ~_PAGE_RW) &
-			       pte_val_ma(pte));
-
-	return pte;
-}
-#else /* CONFIG_X86_64 */
-static pte_t __init mask_rw_pte(pte_t *ptep, pte_t pte)
-{
-	unsigned long pfn;
-
-	if (xen_feature(XENFEAT_writable_page_tables) ||
-	    xen_feature(XENFEAT_auto_translated_physmap) ||
-	    xen_start_info->mfn_list >= __START_KERNEL_map)
-		return pte;
-
-	/*
-	 * Pages belonging to the initial p2m list mapped outside the default
-	 * address range must be mapped read-only. This region contains the
-	 * page tables for mapping the p2m list, too, and page tables MUST be
-	 * mapped read-only.
-	 */
-	pfn = pte_pfn(pte);
-	if (pfn >= xen_start_info->first_p2m_pfn &&
-	    pfn < xen_start_info->first_p2m_pfn + xen_start_info->nr_p2m_frames)
-		pte = __pte_ma(pte_val_ma(pte) & ~_PAGE_RW);
-
-	return pte;
-}
-#endif /* CONFIG_X86_64 */
-
 /*
  * Init-time set_pte while constructing initial pagetables, which
  * doesn't allow RO page table pages to be remapped RW.
@@ -1600,13 +1565,37 @@ static pte_t __init mask_rw_pte(pte_t *ptep, pte_t pte)
  * so always write the PTE directly and rely on Xen trapping and
  * emulating any updates as necessary.
  */
+__visible pte_t xen_make_pte_init(pteval_t pte)
+{
+#ifdef CONFIG_X86_64
+	unsigned long pfn;
+
+	/*
+	 * Pages belonging to the initial p2m list mapped outside the default
+	 * address range must be mapped read-only. This region contains the
+	 * page tables for mapping the p2m list, too, and page tables MUST be
+	 * mapped read-only.
+	 */
+	pfn = (pte & PTE_PFN_MASK) >> PAGE_SHIFT;
+	if (xen_start_info->mfn_list < __START_KERNEL_map &&
+	    pfn >= xen_start_info->first_p2m_pfn &&
+	    pfn < xen_start_info->first_p2m_pfn + xen_start_info->nr_p2m_frames)
+		pte &= ~_PAGE_RW;
+#endif
+	pte = pte_pfn_to_mfn(pte);
+	return native_make_pte(pte);
+}
+PV_CALLEE_SAVE_REGS_THUNK(xen_make_pte_init);
+
 static void __init xen_set_pte_init(pte_t *ptep, pte_t pte)
 {
-	if (pte_mfn(pte) != INVALID_P2M_ENTRY)
-		pte = mask_rw_pte(ptep, pte);
-	else
-		pte = __pte_ma(0);
-
+#ifdef CONFIG_X86_32
+	/* If there's an existing pte, then don't allow _PAGE_RW to be set */
+	if (pte_mfn(pte) != INVALID_P2M_ENTRY
+	    && pte_val_ma(*ptep) & _PAGE_PRESENT)
+		pte = __pte_ma(((pte_val_ma(*ptep) & _PAGE_RW) | ~_PAGE_RW) &
+			       pte_val_ma(pte));
+#endif
 	native_set_pte(ptep, pte);
 }
 
@@ -1950,14 +1939,7 @@ void __init xen_setup_kernel_pagetable(pgd_t *pgd, unsigned long max_pfn)
 		 * L3_k[511] -> level2_fixmap_pgt */
 		convert_pfn_mfn(level3_kernel_pgt);
 
-		convert_pfn_mfn(level3_vmalloc_start_pgt[0]);
-		convert_pfn_mfn(level3_vmalloc_start_pgt[1]);
-		convert_pfn_mfn(level3_vmalloc_start_pgt[2]);
-		convert_pfn_mfn(level3_vmalloc_start_pgt[3]);
-		convert_pfn_mfn(level3_vmalloc_end_pgt);
-		convert_pfn_mfn(level3_vmemmap_pgt);
 		/* L3_k[511][506] -> level1_fixmap_pgt */
-		/* L3_k[511][507] -> level1_vsyscall_pgt */
 		convert_pfn_mfn(level2_fixmap_pgt);
 	}
 	/* We get [511][511] and have Xen's version of level2_kernel_pgt */
@@ -1987,25 +1969,11 @@ void __init xen_setup_kernel_pagetable(pgd_t *pgd, unsigned long max_pfn)
 		set_page_prot(init_level4_pgt, PAGE_KERNEL_RO);
 		set_page_prot(level3_ident_pgt, PAGE_KERNEL_RO);
 		set_page_prot(level3_kernel_pgt, PAGE_KERNEL_RO);
-		set_page_prot(level3_vmalloc_start_pgt[0], PAGE_KERNEL_RO);
-		set_page_prot(level3_vmalloc_start_pgt[1], PAGE_KERNEL_RO);
-		set_page_prot(level3_vmalloc_start_pgt[2], PAGE_KERNEL_RO);
-		set_page_prot(level3_vmalloc_start_pgt[3], PAGE_KERNEL_RO);
-		set_page_prot(level3_vmalloc_end_pgt, PAGE_KERNEL_RO);
-		set_page_prot(level3_vmemmap_pgt, PAGE_KERNEL_RO);
 		set_page_prot(level3_user_vsyscall, PAGE_KERNEL_RO);
 		set_page_prot(level2_ident_pgt, PAGE_KERNEL_RO);
-		set_page_prot(level2_vmemmap_pgt, PAGE_KERNEL_RO);
 		set_page_prot(level2_kernel_pgt, PAGE_KERNEL_RO);
 		set_page_prot(level2_fixmap_pgt, PAGE_KERNEL_RO);
-		set_page_prot(level1_modules_pgt[0], PAGE_KERNEL_RO);
-		set_page_prot(level1_modules_pgt[1], PAGE_KERNEL_RO);
-		set_page_prot(level1_modules_pgt[2], PAGE_KERNEL_RO);
-		set_page_prot(level1_modules_pgt[3], PAGE_KERNEL_RO);
-		set_page_prot(level1_fixmap_pgt[0], PAGE_KERNEL_RO);
-		set_page_prot(level1_fixmap_pgt[1], PAGE_KERNEL_RO);
-		set_page_prot(level1_fixmap_pgt[2], PAGE_KERNEL_RO);
-		set_page_prot(level1_vsyscall_pgt, PAGE_KERNEL_RO);
+		set_page_prot(level1_fixmap_pgt, PAGE_KERNEL_RO);
 
 		/* Pin down new L4 */
 		pin_pagetable_pfn(MMUEXT_PIN_L4_TABLE,
@@ -2416,7 +2384,6 @@ static void __init xen_post_allocator_init(void)
 	pv_mmu_ops.set_pud = xen_set_pud;
 #if CONFIG_PGTABLE_LEVELS == 4
 	pv_mmu_ops.set_pgd = xen_set_pgd;
-	pv_mmu_ops.set_pgd_batched = xen_set_pgd;
 #endif
 
 	/* This will work as long as patching hasn't happened yet
@@ -2429,6 +2396,7 @@ static void __init xen_post_allocator_init(void)
 	pv_mmu_ops.alloc_pud = xen_alloc_pud;
 	pv_mmu_ops.release_pud = xen_release_pud;
 #endif
+	pv_mmu_ops.make_pte = PV_CALLEE_SAVE(xen_make_pte);
 
 #ifdef CONFIG_X86_64
 	pv_mmu_ops.write_cr3 = &xen_write_cr3;
@@ -2445,10 +2413,6 @@ static void xen_leave_lazy_mmu(void)
 	preempt_enable();
 }
 
-static void xen_pte_update(struct mm_struct *mm, unsigned long addr, pte_t *ptep)
-{
-}
-
 static const struct pv_mmu_ops xen_mmu_ops __initconst = {
 	.read_cr2 = xen_read_cr2,
 	.write_cr2 = xen_write_cr2,
@@ -2461,7 +2425,7 @@ static const struct pv_mmu_ops xen_mmu_ops __initconst = {
 	.flush_tlb_single = xen_flush_tlb_single,
 	.flush_tlb_others = xen_flush_tlb_others,
 
-	.pte_update = xen_pte_update,
+	.pte_update = paravirt_nop,
 
 	.pgd_alloc = xen_pgd_alloc,
 	.pgd_free = xen_pgd_free,
@@ -2481,7 +2445,7 @@ static const struct pv_mmu_ops xen_mmu_ops __initconst = {
 	.pte_val = PV_CALLEE_SAVE(xen_pte_val),
 	.pgd_val = PV_CALLEE_SAVE(xen_pgd_val),
 
-	.make_pte = PV_CALLEE_SAVE(xen_make_pte),
+	.make_pte = PV_CALLEE_SAVE(xen_make_pte_init),
 	.make_pgd = PV_CALLEE_SAVE(xen_make_pgd),
 
 #ifdef CONFIG_X86_PAE
@@ -2498,7 +2462,6 @@ static const struct pv_mmu_ops xen_mmu_ops __initconst = {
 	.pud_val = PV_CALLEE_SAVE(xen_pud_val),
 	.make_pud = PV_CALLEE_SAVE(xen_make_pud),
 	.set_pgd = xen_set_pgd_hyper,
-	.set_pgd_batched = xen_set_pgd_hyper,
 
 	.alloc_pud = xen_alloc_pmd_init,
 	.release_pud = xen_release_pmd_init,

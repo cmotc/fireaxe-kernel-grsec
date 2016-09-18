@@ -298,7 +298,7 @@ static inline void pnp_set_drvdata(struct pnp_dev *pdev, void *data)
 struct pnp_fixup {
 	char id[7];
 	void (*quirk_function) (struct pnp_dev * dev);	/* fixup function */
-} __do_const;
+};
 
 /* config parameters */
 #define PNP_CONFIG_NORMAL	0x0001
@@ -337,9 +337,11 @@ extern struct mutex pnp_res_mutex;
 
 #ifdef CONFIG_PNPBIOS
 extern struct pnp_protocol pnpbios_protocol;
+extern bool arch_pnpbios_disabled(void);
 #define pnp_device_is_pnpbios(dev) ((dev)->protocol == (&pnpbios_protocol))
 #else
 #define pnp_device_is_pnpbios(dev) 0
+#define arch_pnpbios_disabled()	false
 #endif
 
 #ifdef CONFIG_PNPACPI

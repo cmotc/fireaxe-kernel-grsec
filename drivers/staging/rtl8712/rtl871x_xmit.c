@@ -152,7 +152,7 @@ sint _r8712_init_xmit_priv(struct xmit_priv *pxmitpriv,
 	alloc_hwxmits(padapter);
 	init_hwxmits(pxmitpriv->hwxmits, pxmitpriv->hwxmit_entry);
 	tasklet_init(&pxmitpriv->xmit_tasklet,
-		r8712_xmit_bh,
+		(void(*)(unsigned long))r8712_xmit_bh,
 		(unsigned long)padapter);
 	return _SUCCESS;
 }
@@ -848,7 +848,7 @@ void r8712_free_xmitframe_queue(struct xmit_priv *pxmitpriv,
 	phead = &pframequeue->queue;
 	plist = phead->next;
 	while (!end_of_queue_search(phead, plist)) {
-		pxmitframe = LIST_CONTAINOR(plist, struct xmit_frame, list);
+		pxmitframe = container_of(plist, struct xmit_frame, list);
 		plist = plist->next;
 		r8712_free_xmitframe(pxmitpriv, pxmitframe);
 	}
