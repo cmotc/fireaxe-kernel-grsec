@@ -13,7 +13,8 @@ cd $TOME
 #arch/arm/configs/antm_seven_grsec
 #arch/arm/configs/antm_seven_static
 #arch/arm/configs/antm_seven_config
-BUILDS="arch/arm/configs/antm_seven_working"
+#BUILDS="arch/arm/configs/antm_seven_working"
+BUILDS="config_new_testing"
 for config in $BUILDS; do
         make mrproper
         cp $config .config
